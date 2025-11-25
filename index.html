@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mini Suite de Utilidades</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+
+  <div class="sidebar">
+    <h2>Utilidades</h2>
+    <button class="tab-btn" data-tab="imgpdf">IMG → PDF</button>
+    <button class="tab-btn" data-tab="music">Descargar Música</button>
+    <button class="tab-btn" data-tab="converter">Conversor Genérico</button>
+  </div>
+
+  <div class="content">
+    <div id="imgpdf" class="tab-content active">
+        <h3 class="tool-title">Convertir Imagen a PDF</h3>
+        <div class="pdf-tool">
+            <input id="imgInput" type="file" accept="image/*" multiple>
+            <button id="convertPdfBtn" disabled>Convertir a PDF</button>
+            <div id="previewPdf" class="preview-pdf"></div>
+        </div>
+    </div>
+
+    <div id="music" class="tab-content">
+      <h3 class="tool-title">Descargar Música</h3>
+      <p>Aquí irá el formulario para pegar un enlace y descargar audio.</p>
+    </div>
+
+    <div id="converter" class="tab-content">
+      <h3 class="tool-title">Conversor Genérico</h3>
+      <p>Zona para convertir diferentes formatos.</p>
+    </div>
+  </div>
+
+  <script>
+    const buttons = document.querySelectorAll('.tab-btn');
+    const tabs = document.querySelectorAll('.tab-content');
+
+    buttons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        tabs.forEach(tab => tab.classList.remove('active'));
+        document.getElementById(btn.dataset.tab).classList.add('active');
+      });
+    });
+  </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+</body>
+</html>
