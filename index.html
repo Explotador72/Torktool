@@ -22,7 +22,11 @@
         <div class="pdf-tool">
             <input id="imgInput" type="file" accept="image/*" multiple>
             <button id="convertPdfBtn" disabled>Convertir a PDF</button>
-            <input id="nameInput" type="text">
+            <input id="nameInput" type="text" placeholder="Nombre del archivo PDF">
+            <label>
+              <input type="checkbox" id="sizeCheckbox" checked>
+              Tamaño imágenes uniforme
+            </label>
             <div id="previewPdf" class="preview-pdf"></div>
         </div>
     </div>

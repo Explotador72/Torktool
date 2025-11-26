@@ -112,12 +112,67 @@ body {
   border-radius: 8px;
   overflow: hidden;
   display: flex;
+  position: relative;
+  margin: 8px;
   justify-content: center;
   align-items: center;
   background: #fafafa;
 }
 
 .preview-thumb img {
-  max-width: 100%;
-  max-height: 100%;
+  width: 120px;
+  height: auto;
+  border-radius: 6px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+}
+
+.close-btn {
+  position: absolute;
+  top: 5px;
+  left: 5px; /* esquina superior izquierda */
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  width: 20px;
+  height: 20px;
+  font-size: 14px;
+  line-height: 20px;
+  text-align: center;
+  border-radius: 50%;
+  cursor: pointer;
+  user-select: none;
+  transition: 0.2s;
+}
+
+.close-btn:hover {
+  background: red;
+}
+
+.index-number {
+  position: absolute;
+  bottom: 5px;
+  right: 5px;
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  padding: 2px 6px;
+  font-size: 12px;
+  border-radius: 4px;
+  user-select: none;
+}
+
+.preview-thumb.dragging {
+  opacity: 0.5;
+}
+
+.preview-thumb.dragover {
+  border: 2px dashed #007bff;
+}
+
+.sizeCheckbox {
+  margin-left: 8px;
+  display: inline-block;
+}
+
+.pdf-tool label {
+  font-size: 13px;
+  color: #520000;
 }
