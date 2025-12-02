@@ -33,7 +33,11 @@
 
     <div id="music" class="tab-content">
       <h3 class="tool-title">Descargar Música</h3>
-      <p>Aquí irá el formulario para pegar un enlace y descargar audio.</p>
+      <div class="yt-tool">
+          <input id="ytInput" type="text" placeholder="Enlace de YouTube">
+          <button id="downloadMusicBtn" type="button">Descargar Música</button>
+          <div id="statusMusic" class="status-music"></div>
+      </div>
     </div>
 
     <div id="converter" class="tab-content">
@@ -54,7 +58,8 @@
     });
   </script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script src="functions.js"></script>
+  <script src="pdf-convert.js"></script>
+  <script src="yt-music.js"></script>
 
 </body>
 </html>
