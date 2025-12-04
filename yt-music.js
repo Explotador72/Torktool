@@ -1,6 +1,7 @@
 const btnYT = document.getElementById("downloadMusicBtn");
 const responseStatus = document.getElementById("statusMusic");
 const videoUrlInput = document.getElementById('ytInput');
+const videoName = document.getElementById('nameSong')
 
 const apiUrlInput = "https://yt-dwn-f1c0.onrender.com"
 
@@ -36,19 +37,23 @@ async function startProcess(event) {
             body: JSON.stringify({ url: videoUrl })
         });
 
-        if (!downloadResponse.ok) {
-            const errorText = await downloadResponse.text();
-            showStatus(`❌ Error HTTP (${downloadResponse.status}). Ver consola para detalles.`, 'error');
-            console.error("Respuesta HTTP fallida:", downloadResponse.status, errorText);
+        if (!response.ok) {
+            const errorText = await response.text();
+            showStatus(`❌ Error HTTP (${response.status}). Ver consola para detalles.`, 'error');
+            console.error("Respuesta HTTP fallida:", response.status, errorText);
             return;
         }
 
-        const responseText = await downloadResponse.text();
+        const responseText = await response.text();
 
         let downloadData;
         downloadData = JSON.parse(responseText);
 
-        const filename = downloadData.filename;
+        let filename = downloadData.filename
+        if (videoName) {
+            filename = videoName.value;
+        }
+        console.log(filename)
         const downloadUrlRelative = downloadData.download_url;
         const fileUrl = `${LOCAL_API_URL}${downloadUrlRelative}`;
 
@@ -56,6 +61,7 @@ async function startProcess(event) {
         const a = document.createElement('a');
         a.style.display = 'none';
         a.href = fileUrl;
+    
         a.download = filename;
 
         document.body.appendChild(a);
