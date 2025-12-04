@@ -2,6 +2,7 @@ const btnYT = document.getElementById("downloadMusicBtn");
 const responseStatus = document.getElementById("statusMusic");
 const videoUrlInput = document.getElementById('ytInput');
 const videoName = document.getElementById('nameSong')
+const formatVideo = document.getElementById('typeCheckbox')
 
 const apiUrlInput = "https://yt-dwn-f1c0.onrender.com"
 
@@ -31,10 +32,23 @@ async function startProcess(event) {
     showStatus(`⏳ Paso 1/2: Solicitando descarga a ${LOCAL_API_URL}...`, 'loading');
 
     try {
+        let inputName
+        if (videoName) {
+            inputName = videoName.value;
+        }
+        let format
+        if (formatVideo.checked) {
+            format = "mp4"
+        } else {
+            format = "mp3"
+        }
         const response = await fetch(`${LOCAL_API_URL}/api/url`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url: videoUrl })
+            body: JSON.stringify({ 
+                url: videoUrl,
+                filename: inputName,
+                type: format})
         });
 
         if (!response.ok) {
@@ -48,12 +62,7 @@ async function startProcess(event) {
 
         let downloadData;
         downloadData = JSON.parse(responseText);
-
-        let filename = downloadData.filename
-        if (videoName) {
-            filename = videoName.value;
-        }
-        console.log(filename)
+        const filename = downloadData.filename
         const downloadUrlRelative = downloadData.download_url;
         const fileUrl = `${LOCAL_API_URL}${downloadUrlRelative}`;
 
