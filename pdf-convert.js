@@ -13,7 +13,7 @@ let images = [];
 // Mostrar miniaturas
 imgInput.addEventListener("change", () => {
   const newFiles = Array.from(imgInput.files); // archivos recién seleccionados
-  const newItems = newFiles.map(f => ({ file: f, id: cryptoRandomId() }));
+  const newItems = newFiles.map (f => ({ file: f, id: cryptoRandomId() }));
   images = images.concat(newItems);
 
   imgInput.value = "";

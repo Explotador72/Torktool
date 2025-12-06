@@ -14,7 +14,7 @@
     <h2>Utilidades</h2>
     <button class="tab-btn" data-tab="imgpdf">IMG → PDF</button>
     <button class="tab-btn" data-tab="music">Descargar Música</button>
-    <button class="tab-btn" data-tab="converter">Conversor Genérico</button>
+    <button class="tab-btn" data-tab="converter">Conversor audio a texto</button>
   </div>
 
   <div class="content">
@@ -35,20 +35,24 @@
     <div id="music" class="tab-content">
       <h3 class="tool-title">Descargar Música</h3>
       <div class="yt-tool">
-          <input id="ytInput" type="text" placeholder="Enlace de YouTube">
-          <button id="downloadMusicBtn" type="button">Descargar Música</button>
-          <input id="nameSong" type="text" placeholder="Nombre del archivo descargado">
-          <label>
-           <input type="checkbox" id="typeCheckbox" unchecked>
-            Descargar como MP4
-          </label>
-          <div id="statusMusic" class="status-music"></div>
+        <input id="ytInput" type="text" placeholder="Enlace de YouTube">
+        <button id="downloadMusicBtn" type="button">Descargar Música</button>
+        <input id="nameSong" type="text" placeholder="Nombre del archivo descargado">
+        <label>
+          <input type="checkbox" id="typeCheckbox" unchecked>
+          Descargar como MP4
+        </label>
+        <div id="statusMusic" class="status-music"></div>
       </div>
     </div>
 
     <div id="converter" class="tab-content">
-      <h3 class="tool-title">Conversor Genérico</h3>
-      <p>Zona para convertir diferentes formatos.</p>
+      <h3 class="tool-title">Conversor de audio a texto</h3>
+      <div class="audio-tool">
+        <input id="audioInput" type="file" accept="audio/*" multiple>
+        <button id="transcriptBtn" disabled>Start transcription</button>
+        <label id="transcriptOutput"></label>
+      </div>
     </div>
   </div>
 
@@ -66,6 +70,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="pdf-convert.js"></script>
   <script src="yt-music.js"></script>
+  <script src="transcriber.js"></script>
 
 </body>
 </html>

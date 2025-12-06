@@ -380,3 +380,26 @@ body::before {
     padding: 20px;
   }
 }
+
+.audio-tool {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    margin-top: 10px;
+}
+
+.audio-tool button{
+  padding: 12px;
+  background: #f7d048;
+  color: #1e1e1e;
+  font-weight: bold;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: 0.25s;
+}
+
+#transcriptBtn:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
