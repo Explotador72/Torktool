@@ -5,7 +5,7 @@ const videoName = document.getElementById('nameSong')
 const formatMP4 = document.getElementById('MP4Checkbox')
 const formatMP3 = document.getElementById('MP3Checkbox')
 const previewYT = document.getElementById("previewYT");
-const apiUrlInput = "https://yt-dwn-f1c0.onrender.com"
+const apiUrlInput = "https://yt-dwn-f1c0.onrender.com"//"http://localhost:5000"
 
 let ytList = [];
 
@@ -59,7 +59,7 @@ async function startProcess(event) {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
-                url: ytList,
+                urls: ytList,
                 filename: inputName,
                 type: format})
         });
