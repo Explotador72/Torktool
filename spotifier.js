@@ -109,7 +109,7 @@ async function spotifyDownload() {
     updateProgress(5);
     
     try {
-        const response = await fetch(apiUrlInput, API_ENDPOINTS.PLAYLIST_DOWNLOAD, {
+        const response = await fetch(`${apiUrlInput}${API_ENDPOINTS.PLAYLIST_DOWNLOAD}`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({url: url})
@@ -132,7 +132,6 @@ async function spotifyDownload() {
                         <ul>
                             <li>Total: ${data.stats.total} canciones</li>
                             <li>Descargadas: ${data.stats.downloaded}</li>
-                            <li>Ya existían: ${data.stats.exists}</li>
                             <li>No encontradas: ${data.stats.not_found}</li>
                         </ul>
                     </div>
@@ -165,7 +164,7 @@ async function spotifyListFiles() {
     showLoading(spotifyFilesList, 'Cargando archivos...');
     
     try {
-        const response = await fetch(apiUrlInput, API_ENDPOINTS.FILES_LIST);
+        const response = await fetch(`${apiUrlInput}${API_ENDPOINTS.FILES_LIST}`);
         const data = await response.json();
         
         if (data.success && data.files.length > 0) {
@@ -177,7 +176,7 @@ async function spotifyListFiles() {
                         <span class="file-size">${file.size || ''}</span>
                     </div>
                     <div class="file-actions">
-                        <a href="${API_ENDPOINTS.DOWNLOAD_FILE}${file.name}" class="btn-download-small" download>
+                        <a href="${apiUrlInput}${API_ENDPOINTS.DOWNLOAD_FILE}${file.name}" class="btn-download-small" download>
                             <i class="fas fa-download"></i> Descargar
                         </a>
                         <button class="btn-delete-small" onclick="spotifyDeleteFile('${file.name}')">
@@ -205,7 +204,7 @@ async function spotifyDeleteFile(filename) {
     if (!confirm(`¿Eliminar ${filename}?`)) return;
     
     try {
-        const response = await fetch(apiUrlInput, API_ENDPOINTS.DELETE_FILE + filename, {
+        const response = await fetch(`${apiUrlInput}${API_ENDPOINTS.DELETE_FILE + filename}`, {
             method: 'DELETE'
         });
         
@@ -224,7 +223,7 @@ async function spotifyCleanup() {
     if (!confirm('¿Eliminar TODOS los archivos descargados de Spotify?')) return;
     
     try {
-        const response = await fetch(apiUrlInput, API_ENDPOINTS.CLEANUP, {
+        const response = await fetch(`${apiUrlInput}${API_ENDPOINTS.CLEANUP}`, {
             method: 'DELETE'
         });
         

@@ -461,4 +461,543 @@ body::before {
     cursor: default;
 }
 
+/* Spotify Tab - Estilo minimalista */
+#spotify .spotify-tool {
+  margin-top: 20px;
+}
 
+#spotify .input-group {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 15px;
+}
+
+#spotify .input-group input {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.1);
+  border: 2px solid rgb(248, 167, 17);
+  border-radius: 6px;
+  color: white;
+  padding: 10px 15px;
+  font-size: 14px;
+}
+
+#spotify .input-group input::placeholder {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+#spotify .input-group input:focus {
+  border-color: #ff7300;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.2);
+}
+
+#spotify .button-group {
+  display: flex;
+  gap: 10px;
+}
+
+#spotify .btn {
+  padding: 10px 15px;
+  border: none;
+  border-radius: 6px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+#spotify .btn-info {
+  background: #4361ee;
+  color: white;
+}
+
+#spotify .btn-download {
+  background: #1DB954;
+  color: white;
+}
+
+#spotify .btn:hover {
+  transform: translateY(-3px);
+  opacity: 0.9;
+}
+
+/* Resultado de búsqueda */
+#spotify h3:not(.tool-title) {
+  margin: 20px 0 10px 0;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 16px;
+  font-weight: normal;
+  text-align: center;
+  padding: 20px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  border: 1px dashed rgba(255, 255, 255, 0.1);
+}
+
+/* Barra de progreso */
+#spotify .progress-container {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  padding: 15px;
+  margin: 20px 0;
+}
+
+#spotify .progress-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+#spotify .progress-bar {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+#spotify .progress-bar .progress {
+  height: 100%;
+  background: linear-gradient(90deg, #1DB954, #1ed760);
+  width: 0%;
+  transition: width 0.3s;
+}
+
+/* Archivos descargados */
+#spotify .files-section {
+  margin-top: 30px;
+  padding-top: 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+#spotify .files-section h4 {
+  margin-bottom: 15px;
+  font-size: 16px;
+  color: white;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+#spotify .files-list {
+  min-height: 60px;
+}
+
+#spotify .empty-state {
+  text-align: center;
+  color: rgba(255, 255, 255, 0.5);
+  padding: 20px;
+}
+
+#spotify .empty-state i {
+  font-size: 24px;
+  margin-bottom: 10px;
+  display: block;
+}
+
+/* Botones de acción */
+#spotify .action-buttons {
+  display: flex;
+  gap: 10px;
+  margin-top: 15px;
+}
+
+#spotify .btn-cleanup {
+  background: rgba(220, 53, 69, 0.2);
+  color: #dc3545;
+  border: 1px solid #dc3545;
+}
+
+#spotify .btn-refresh {
+  background: rgba(13, 110, 253, 0.2);
+  color: #0d6efd;
+  border: 1px solid #0d6efd;
+}
+
+#spotify .btn-cleanup:hover,
+#spotify .btn-refresh:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  #spotify .input-group {
+    flex-direction: column;
+  }
+  
+  #spotify .button-group {
+    flex-direction: column;
+  }
+  
+  #spotify .btn {
+    justify-content: center;
+  }
+  
+  #spotify .action-buttons {
+    flex-direction: column;
+  }
+}
+
+/* Spotify Downloader CSS */
+
+/* Estados de carga y mensajes */
+.loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 20px;
+    color: #666;
+    background: rgba(255, 255, 255, 0.9);
+    border-radius: 8px;
+    margin: 10px 0;
+}
+
+.loading i {
+    color: #1DB954;
+}
+
+.error-message {
+    background: rgba(220, 53, 69, 0.1);
+    border-left: 4px solid #dc3545;
+    padding: 15px;
+    border-radius: 4px;
+    color: #dc3545;
+    margin: 10px 0;
+}
+
+.error-message i {
+    margin-right: 8px;
+}
+
+.success-message {
+    background: rgba(40, 167, 69, 0.1);
+    border-left: 4px solid #28a745;
+    padding: 20px;
+    border-radius: 8px;
+    color: #155724;
+    margin: 10px 0;
+}
+
+.success-message i {
+    color: #28a745;
+    margin-right: 8px;
+}
+
+/* Información de playlist */
+.playlist-info {
+    background: rgba(255, 255, 255, 0.95);
+    border-radius: 10px;
+    padding: 20px;
+    margin: 15px 0;
+    color: #333;
+}
+
+.playlist-header {
+    display: flex;
+    gap: 20px;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid #eee;
+}
+
+.playlist-cover {
+    width: 120px;
+    height: 120px;
+    border-radius: 8px;
+    object-fit: cover;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.playlist-title {
+    font-size: 22px;
+    margin: 0 0 8px 0;
+    color: #222;
+}
+
+.playlist-owner,
+.playlist-stats {
+    color: #666;
+    margin: 5px 0;
+    font-size: 14px;
+}
+
+.playlist-owner i,
+.playlist-stats i {
+    color: #000000;
+    margin-right: 5px;
+    width: 16px;
+}
+
+/* Lista de canciones */
+.tracks-list {
+    background: rgba(29, 185, 84, 0.05);
+    border-radius: 8px;
+    padding: 15px;
+    margin-top: 15px;
+}
+
+.tracks-list h4 {
+    color: #222;
+    margin: 0 0 12px 0;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.tracks-list ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.tracks-list li {
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 14px;
+}
+
+.tracks-list li:last-child {
+    border-bottom: none;
+}
+
+.tracks-list li i {
+    color: #34c56e;
+    font-size: 12px;
+}
+
+.more-tracks {
+    text-align: center;
+    color: #666;
+    font-style: italic;
+    margin-top: 10px;
+    font-size: 13px;
+}
+
+/* Estadísticas */
+.stats {
+    background: white;
+    padding: 15px;
+    border-radius: 6px;
+    margin: 15px 0;
+    border: 1px solid #e9ecef;
+}
+
+.stats p {
+    margin: 0 0 10px 0;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.stats ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.stats li {
+    padding: 6px 0;
+    border-bottom: 1px solid #f8f9fa;
+    font-size: 14px;
+}
+
+.stats li:last-child {
+    border-bottom: none;
+}
+
+/* Botón de descarga */
+.download-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    background: #1DB954;
+    color: white;
+    padding: 12px 20px;
+    border-radius: 6px;
+    text-decoration: none;
+    font-weight: 500;
+    margin-top: 15px;
+    transition: all 0.2s;
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.download-btn:hover {
+    background: #1ed760;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(29, 185, 84, 0.3);
+    color: white;
+}
+
+/* Lista de archivos */
+.file-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 6px;
+    padding: 12px 15px;
+    margin: 8px 0;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    transition: all 0.2s;
+}
+
+.file-item:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(29, 185, 84, 0.2);
+}
+
+.file-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: white;
+    flex: 1;
+    overflow: hidden;
+}
+
+.file-info i {
+    color: #c5f5d6;
+    font-size: 16px;
+    min-width: 20px;
+}
+
+.file-name {
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
+}
+
+.file-size {
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.file-actions {
+    display: flex;
+    gap: 8px;
+    margin-left: 10px;
+}
+
+.btn-download-small {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(29, 185, 84, 0.15);
+    color: #1DB954;
+    border: 1px solid rgba(29, 185, 84, 0.3);
+    padding: 6px 12px;
+    border-radius: 4px;
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 500;
+    transition: all 0.2s;
+    white-space: nowrap;
+}
+
+.btn-download-small:hover {
+    background: #1DB954;
+    color: white;
+    text-decoration: none;
+}
+
+.btn-delete-small {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    background: rgba(220, 53, 69, 0.1);
+    color: #dc3545;
+    border: 1px solid rgba(220, 53, 69, 0.3);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-size: 14px;
+}
+
+.btn-delete-small:hover {
+    background: #dc3545;
+    color: white;
+}
+
+.empty-state {
+    text-align: center;
+    padding: 30px;
+    color: rgba(255, 255, 255, 0.5);
+}
+
+.empty-state i {
+    font-size: 32px;
+    margin-bottom: 10px;
+    color: rgba(255, 255, 255, 0.3);
+    display: block;
+}
+
+.empty-state p {
+    margin: 0;
+    font-size: 14px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .playlist-header {
+        flex-direction: column;
+        text-align: center;
+        gap: 15px;
+    }
+    
+    .playlist-cover {
+        width: 150px;
+        height: 150px;
+    }
+    
+    .file-item {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+    }
+    
+    .file-actions {
+        margin-left: 0;
+        justify-content: flex-end;
+    }
+    
+    .btn-download-small {
+        padding: 8px 15px;
+    }
+}
+
+/* Animaciones */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.playlist-info,
+.success-message,
+.file-item {
+    animation: fadeIn 0.3s ease;
+}
