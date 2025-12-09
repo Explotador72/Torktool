@@ -262,21 +262,44 @@ body::before {
     position: relative;
     justify-content: left;
     align-items: center;
-    background: #343434;
+    background: #191919;
     transition: 0.2s;
     padding: 8px;
     gap: 6px;
 }
 
-.img-yt {
+.preview-thumb-yt img {
     max-width: 100px;
     max-height: 100px;
     object-fit: contain;
 }
 
-.name-yt {
+.preview-thumb-yt span {
     align-items: center;    /* centra verticalmente */
     justify-content: center; /* centra horizontalmente */
+    color: black;
+    border-radius: 4px;
+    background: rgb(180, 180, 180);
+}
+
+.preview-thumb-yt button {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  width: 22px;
+  height: 22px;
+  font-size: 10px;
+  display: flex;          /* Mejor alineación */
+  align-items: center;    /* Centra verticalmente */
+  justify-content: center; /* Centra horizontalmente */
+  border-radius: 50%;
+  cursor: pointer;
+  border: none;
+  padding: 0;
+  transition: all 0.2s ease;
+  z-index: 10;           /* Asegura que esté por encima */
 }
 
 
@@ -314,8 +337,6 @@ body::before {
     border-radius: 5px;
 }
 
-
-
 /* Etiquetas */
 .pdf-tool label {
     font-size: 14px;
@@ -340,20 +361,31 @@ body::before {
   transition: all 0.3s;
 }
 
+.yt-tool button:disabled {
+    opacity: 0.4;
+    overflow: hidden;
+    cursor: default;
+}
+
 .yt-tool input:hover, .yt-tool input:focus {
   border-color: #c5b314;
   box-shadow: 0 0 0 3px rgba(197, 179, 20, 0.2);
   outline: none;
 }
 
+.yt-input-group {
+    display: flex;
+    gap: 10px;
+    width: 100%;
+}
 
-.yt-tool input {
-    padding: 8px;
-    font-size: 14px;
-    border-radius: 8px;
-    background: #1a1a1a;
-    border: 1px solid #444;
-    color: #eee;
+.yt-input-group input {
+    flex: 1;
+    min-width: 0;
+}
+
+.yt-input-group button {
+    flex-shrink: 0;
 }
 
 /* Botón YouTube */
@@ -368,7 +400,7 @@ body::before {
     transition: 0.25s;
 }
 
-.yt-tool button:hover {
+.yt-tool button:enabled:hover {
     background: #e3c23f;
     outline: 2px solid #ba9b20;
     transform: translateY(-3px);
@@ -428,3 +460,5 @@ body::before {
     opacity: 0.4;
     cursor: default;
 }
+
+

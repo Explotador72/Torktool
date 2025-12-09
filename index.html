@@ -6,6 +6,8 @@
     <title>TorkTool</title>
     <link rel="stylesheet" href="styles.css">
     <link rel="icon" type="image/png" href="img/torken.png">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+
 </head>
 
 <body>
@@ -14,6 +16,7 @@
     <h2>Utilidades</h2>
     <button class="tab-btn" data-tab="imgpdf">IMG → PDF</button>
     <button class="tab-btn" data-tab="music">Descargar Música</button>
+    <button class="tab-btn" data-tab="spotify">Spotify Playlist</button>
     <button class="tab-btn" data-tab="converter">Conversor audio a texto</button>
   </div>
 
@@ -35,8 +38,11 @@
     <div id="music" class="tab-content">
       <h3 class="tool-title">Descargar Música</h3>
       <div class="yt-tool">
-        <input id="ytInput" type="text" placeholder="Enlace de YouTube">
-        <button id="downloadMusicBtn" type="button">Descargar Música</button>
+        <div class="yt-input-group">
+          <input id="ytInput" type="text" placeholder="Enlace de YouTube">
+          <button id="addUrlBtn" type="button" disabled>Agregar</button>
+        </div>
+        <button id="downloadMusicBtn" type="button" disabled>Descargar Música</button>
         <input id="nameSong" type="text" placeholder="Nombre del archivo zip">
         <label>
           Descargar como: 
@@ -47,6 +53,64 @@
         </label>
         <div id="statusMusic" class="status-music"></div>
         <div id="previewYT"></div>
+      </div>
+    </div>
+
+    <div id="spotify" class="tab-content">
+      <h3 class="tool-title"><i class="fa-brands fa-spotify" style="color: #1DB954;"></i> Spotify Playlist Downloader</h3>
+      
+      <div class="spotify-tool">
+        <div class="input-group">
+          <div class="input-with-icon">
+            <i class="fas fa-link"></i>
+            <input type="text" id="spotifyUrl" placeholder="Pega la URL de la playlist de Spotify (ej: https://open.spotify.com/playlist/...)" />
+          </div>
+          
+          <div class="button-group">
+            <button class="btn btn-info" onclick="spotifyGetInfo()">
+              <i class="fas fa-search"></i> Ver información
+            </button>
+            <button class="btn btn-download" onclick="spotifyDownload()">
+              <i class="fas fa-download"></i> Descargar Playlist
+            </button>
+          </div>
+        </div>
+
+        <div class="result" id="spotifyResult">
+          <div class="placeholder">
+            <i class="fas fa-info-circle"></i>
+            <p>La información de la playlist aparecerá aquí</p>
+          </div>
+        </div>
+
+        <div class="progress-container" id="spotifyProgressContainer" style="display: none;">
+          <div class="progress-header">
+            <span>Progreso de descarga</span>
+            <span id="spotifyProgressText">0%</span>
+          </div>
+          <div class="progress-bar">
+            <div class="progress" id="spotifyProgress"></div>
+          </div>
+        </div>
+
+        <div class="files-section">
+          <h4><i class="fas fa-folder-open"></i> Archivos Descargados de Spotify</h4>
+          <div id="spotifyFilesList" class="files-list">
+            <div class="empty-state">
+              <i class="fas fa-file-audio"></i>
+              <p>No hay archivos descargados aún</p>
+            </div>
+          </div>
+          
+          <div class="action-buttons">
+            <button class="btn btn-cleanup" onclick="spotifyCleanup()">
+              <i class="fas fa-trash"></i> Limpiar archivos
+            </button>
+            <button class="btn btn-refresh" onclick="spotifyListFiles()">
+              <i class="fas fa-sync"></i> Actualizar lista
+            </button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -61,6 +125,7 @@
   </div>
 
   <script>
+    // Tab switching functionality
     const buttons = document.querySelectorAll('.tab-btn');
     const tabs = document.querySelectorAll('.tab-content');
 
@@ -68,6 +133,10 @@
       btn.addEventListener('click', () => {
         tabs.forEach(tab => tab.classList.remove('active'));
         document.getElementById(btn.dataset.tab).classList.add('active');
+        // Cargar archivos de Spotify cuando se active esa pestaña
+        if (btn.dataset.tab === 'spotify') {
+          spotifyListFiles();
+        }
       });
     });
   </script>
@@ -75,6 +144,6 @@
   <script src="pdf-convert.js"></script>
   <script src="yt-music.js"></script>
   <script src="transcriber.js"></script>
-
+  <script src="spotifier.js"></script>
 </body>
 </html>

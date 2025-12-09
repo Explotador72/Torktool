@@ -5,12 +5,21 @@ const videoName = document.getElementById('nameSong')
 const formatMP4 = document.getElementById('MP4Checkbox')
 const formatMP3 = document.getElementById('MP3Checkbox')
 const previewYT = document.getElementById("previewYT");
-const apiUrlInput = "https://yt-dwn-f1c0.onrender.com"//"http://localhost:5000"
+const apiUrlInput = "http://localhost:5000" //"https://yt-dwn-f1c0.onrender.com"
+const addUrlBtn = document.getElementById("addUrlBtn");
 
 let ytList = [];
 
 btnYT.addEventListener("click", startProcess);
+addUrlBtn.addEventListener("click", addUrl);
 
+videoUrlInput.addEventListener("change", () => {
+    if (videoUrlInput.value.trim() !== "") {
+        addUrlBtn.disabled = false;
+    } else {
+        addUrlBtn.disabled = true;
+    }
+});
 
 formatMP4.addEventListener('change', () => {
     if (formatMP4.checked) {
@@ -48,6 +57,8 @@ async function startProcess(event) {
         let inputName
         if (videoName) {
             inputName = videoName.value;
+        } else {
+            inputName = "music_download"
         }
         let format
         if (formatMP4.checked) {
@@ -117,40 +128,51 @@ function renderPreviews(url) {
         return;
     }
     const img = document.createElement("img");
-    img.className = "img-yt"
     img.src = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
     img.alt = "Miniatura del video";
+    const btnRemove = document.createElement("button");
+    btnRemove.textContent = "✖";
+    btnRemove.title = "Eliminar URL";
+    btnRemove.addEventListener("click", () => {
+        ytList = ytList.filter(url => url !== videoUrl);
+        previewYT.removeChild(div);
+        console.log("Lista de URLs de YouTube:", ytList);
+        btnYT.disabled = ytList.length === 0;
+    });
     const name = document.createElement("span");
-    name.className = "name-yt";
     name.textContent = videoUrl;
-
+    div.appendChild(btnRemove);
     div.appendChild(img);
     div.appendChild(name);
     previewYT.appendChild(div);
 }
 
-
 videoUrlInput.addEventListener("keydown", function(event) {
     if (event.key === "Enter") {
-        const videoUrl = videoUrlInput.value.trim();
-
-        if (esYTURL(videoUrl)) {
-            if (ytList.includes(videoUrl)) {
-                showStatus('❌ La URL ya ha sido ingresada anteriormente.', 'error');
-                return;
-            }
-            showStatus(`✅ URL ingresada correctamente.`, 'success');
-        } else {
-            showStatus('❌ Ingresa la URL de un video de YouTube.', 'error');
-            return;
-        }
-
-        ytList.push(videoUrl);
-        console.log("Lista de URLs de YouTube:", ytList);
-        videoUrlInput.value = "";
-        renderPreviews();
+        addUrl();
     }
 });
+
+function addUrl() {
+    const videoUrl = videoUrlInput.value.trim();
+    if (esYTURL(videoUrl)) {
+        if (ytList.includes(videoUrl)) {
+            showStatus('❌ La URL ya ha sido ingresada anteriormente.', 'error');
+            return;
+        }
+        showStatus(`✅ URL ingresada correctamente.`, 'success');
+        btnYT.disabled = false;
+    } else {
+        showStatus('❌ Ingresa la URL de un video de YouTube.', 'error');
+        return;
+    }
+
+    ytList.push(videoUrl);
+    console.log("Lista de URLs de YouTube:", ytList);
+    videoUrlInput.value = "";
+    addUrlBtn.disabled = true;
+    renderPreviews();
+};
 
 
 function esYTURL(url) {
