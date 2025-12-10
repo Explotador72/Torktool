@@ -5,6 +5,7 @@ const spotifyProgress = document.getElementById('spotifyProgress');
 const spotifyProgressText = document.getElementById('spotifyProgressText');
 const spotifyFilesList = document.getElementById('spotifyFilesList');
 const spotifyTab = document.getElementById('spotify');
+const spotifyKey = document.getElementById('spotifyKey');
 
 const API_ENDPOINTS = {
     PLAYLIST_INFO: '/api/playlist/info',
@@ -112,7 +113,10 @@ async function spotifyDownload() {
         const response = await fetch(`${apiUrlInput}${API_ENDPOINTS.PLAYLIST_DOWNLOAD}`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({url: url})
+            body: JSON.stringify({
+                url: url,
+                spotifyKey: spotifyKey.value
+            })
         });
         
         const data = await response.json();
@@ -164,7 +168,13 @@ async function spotifyListFiles() {
     showLoading(spotifyFilesList, 'Cargando archivos...');
     
     try {
-        const response = await fetch(`${apiUrlInput}${API_ENDPOINTS.FILES_LIST}`);
+        const response = await fetch(`${apiUrlInput}${API_ENDPOINTS.FILES_LIST}`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                spotifyKey: spotifyKey.value
+            })
+        });
         const data = await response.json();
         
         if (data.success && data.files.length > 0) {
@@ -224,7 +234,10 @@ async function spotifyCleanup() {
     
     try {
         const response = await fetch(`${apiUrlInput}${API_ENDPOINTS.CLEANUP}`, {
-            method: 'DELETE'
+            method: 'DELETE',
+            body: JSON.stringify({
+                spotifyKey: spotifyKey.value
+            })
         });
         
         const data = await response.json();

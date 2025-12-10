@@ -61,16 +61,18 @@
       
       <div class="spotify-tool">
         <div class="input-group">
-          <input type="text" id="spotifyUrl" placeholder="Pega la URL de la playlist de Spotify (ej: https://open.spotify.com/playlist/...)" />
-          <div class="button-group">
+            <input type="text" id="spotifyKey" class="crf" placeholder="Introduce tu contraseña" />
+            <input type="text" id="spotifyUrl" placeholder="Pega la URL de la playlist..." />
+        </div>
+        <div class="button-group">
             <button class="btn btn-info" onclick="spotifyGetInfo()">
-              <i class="fas fa-search"></i> Ver información
+                <i class="fas fa-search"></i> Ver información
             </button>
             <button class="btn btn-download" onclick="spotifyDownload()">
-              <i class="fas fa-download"></i> Descargar Playlist
+                <i class="fas fa-download"></i> Descargar Playlist
             </button>
-          </div>
         </div>
+      </div>
 
         <div class="result" id="spotifyResult">
           <div class="placeholder">

@@ -379,13 +379,11 @@ body::before {
     width: 100%;
 }
 
-.yt-input-group input {
-    flex: 1;
-    min-width: 0;
-}
 
 .yt-input-group button {
-    flex-shrink: 0;
+    flex: 1 1 30%;  /* Los botones ocupan 30% */
+    display: flex;
+    gap: 10px;
 }
 
 /* Botón YouTube */
@@ -472,8 +470,18 @@ body::before {
   margin-bottom: 15px;
 }
 
-#spotify .input-group input {
+#spotify #spotifyKey {
   flex: 1;
+  background: rgba(255, 255, 255, 0.1);
+  border: 2px solid rgb(248, 121, 17);
+  border-radius: 6px;
+  color: white;
+  padding: 10px 15px;
+  font-size: 14px;
+}
+
+#spotify #spotifyUrl {
+  flex: 7;
   background: rgba(255, 255, 255, 0.1);
   border: 2px solid rgb(248, 167, 17);
   border-radius: 6px;
@@ -486,8 +494,9 @@ body::before {
   color: rgba(255, 255, 255, 0.6);
 }
 
-#spotify .input-group input:focus {
-  border-color: #ff7300;
+#spotify #spotifyKey:hover,
+#spotify #spotifyUrl:hover {
+  border-color: #ff3300;
   outline: none;
   box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.2);
 }
