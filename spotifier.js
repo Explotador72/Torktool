@@ -6,6 +6,10 @@ const spotifyProgressText = document.getElementById('spotifyProgressText');
 const spotifyFilesList = document.getElementById('spotifyFilesList');
 const spotifyTab = document.getElementById('spotify');
 const spotifyKey = document.getElementById('spotifyKey');
+const advisor = document.getElementById('advisorMessage');
+
+ceo_key = "lobster72"
+
 
 const API_ENDPOINTS = {
     PLAYLIST_INFO: '/api/playlist/info',
@@ -39,7 +43,7 @@ function updateProgress(percentage) {
 async function spotifyGetInfo() {
     const url = spotifyUrl.value.trim();
     if (!url) {
-        alert('Ingresa una URL de Spotify');
+        showAdvisorMessage('Ingresa una URL de Spotify');
         return;
     }
     
@@ -93,7 +97,12 @@ async function spotifyGetInfo() {
 async function spotifyDownload() {
     const url = spotifyUrl.value.trim();
     if (!url) {
-        alert('Ingresa una URL de Spotify');
+        showAdvisorMessage('Ingresa una URL de Spotify');
+        return;
+    }
+
+    if (!spotifyKey.value.trim()) {
+        showAdvisorMessage('Ingresa tu clave de Spotify');
         return;
     }
     
@@ -164,7 +173,6 @@ async function spotifyDownload() {
 
 async function spotifyListFiles() {
     if (!spotifyFilesList) return;
-    
     showLoading(spotifyFilesList, 'Cargando archivos...');
     
     try {
@@ -230,13 +238,20 @@ async function spotifyDeleteFile(key,filename) {
 
 async function spotifyCleanup() {
     if (!confirm('¿Eliminar TODOS los archivos descargados de Spotify?')) return;
-    
+    key = spotifyKey.value.trim();
+    if (key.toLowerCase() === 'public') {
+        const password = prompt('🔒 Esta operación requiere contraseña:', '');
+        if (password !== ceo_key) { // Cambia esto por tu contraseña real
+            alert('❌ Contraseña incorrecta. Operación cancelada.');
+            return;
+        }
+        
+        alert('✅ Contraseña correcta. Procediendo...');
+    }
     try {
-        const response = await fetch(`${apiUrlInput}${API_ENDPOINTS.CLEANUP}`, {
-            method: 'DELETE',
-            body: JSON.stringify({
-                spotifyKey: spotifyKey.value
-            })
+        key = `/${key}`;
+        const response = await fetch(`${apiUrlInput}${API_ENDPOINTS.CLEANUP}${key}`, {
+            method: 'DELETE'
         });
         
         const data = await response.json();
@@ -250,10 +265,27 @@ async function spotifyCleanup() {
 
 // Inicialización
 function initSpotify() {
-    if (spotifyTab && spotifyTab.classList.contains('active')) {
+    console.log("Inicializando Spotify Tab");
+    if (spotifyTab && spotifyTab.classList.contains('active') && spotifyKey.value) {
         spotifyListFiles();
     }
 }
+
+function showAdvisorMessage(message, type = 'info', delay = 0.1*10**3) {
+    advisor.textContent = "";
+    console.log("llego");
+    if (delay > 0) {
+        setTimeout(() => {
+            advisor.textContent = message;
+            advisor.className = `messager ${type}`;
+        }, delay);
+    } else {
+        // Sin delay, mostrar inmediatamente
+        advisor.textContent = message;
+        advisor.className = `messager ${type}`;
+    }
+}
+
 
 // Event listeners
 document.addEventListener('DOMContentLoaded', initSpotify);

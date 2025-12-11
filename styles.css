@@ -1014,3 +1014,34 @@ body::before {
 .file-item {
     animation: fadeIn 0.3s ease;
 }
+
+
+#advisorMessage {
+    position: relative;
+    display: inline-block;
+    font-size: 20px;
+    padding: 5px 10px;
+    color: transparent;
+    overflow: hidden;
+    background: linear-gradient(90deg,
+                transparent 0%,
+                rgba(252,116,116,1) 20%,
+                rgb(255,0,0) 50%,
+                rgba(252,116,116,1) 80%,
+                transparent 100%);
+
+    /* Hace el fondo 4 veces más ancho para que la ola roja sea más larga y pase suavemente */
+    background-size: 400% 100%; 
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: waveColor 40s linear infinite;
+}
+
+@keyframes waveColor {
+    0% {
+        background-position-x: 100%;}
+    100% {
+        background-position-x: -300%; 
+    }
+}

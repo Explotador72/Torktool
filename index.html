@@ -61,7 +61,7 @@
       
       <div class="spotify-tool">
         <div class="input-group">
-            <input type="text" id="spotifyKey" class="crf" placeholder="Introduce tu contraseña" />
+            <input type="text" id="spotifyKey" class="crf" placeholder="Introduce una llave" />
             <input type="text" id="spotifyUrl" placeholder="Pega la URL de la playlist..." />
         </div>
         <div class="button-group">
@@ -71,6 +71,9 @@
             <button class="btn btn-download" onclick="spotifyDownload()">
                 <i class="fas fa-download"></i> Descargar Playlist
             </button>
+        </div>
+        <div class="messager">
+          <p id="advisorMessage"></p>
         </div>
       </div>
 
@@ -131,7 +134,10 @@
         tabs.forEach(tab => tab.classList.remove('active'));
         document.getElementById(btn.dataset.tab).classList.add('active');
         // Cargar archivos de Spotify cuando se active esa pestaña
-        if (btn.dataset.tab === 'spotify') {
+        if (btn.dataset.tab === 'spotify' ) {
+          if (!spotifyKey.value.trim()) {
+            spotifyKey.value = "public"
+          }
           spotifyListFiles();
         }
       });

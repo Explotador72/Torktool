@@ -56,7 +56,7 @@ async function startProcess(event) {
 
     try {
         let inputName
-        if (videoName) {
+        if (videoName.value) {
             inputName = videoName.value;
         } else {
             inputName = "music_download"
