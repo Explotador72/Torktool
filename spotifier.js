@@ -127,7 +127,7 @@ async function spotifyDownload() {
                 await new Promise(resolve => setTimeout(resolve, 100));
                 updateProgress(i);
             }
-            
+            console.log(data);
             spotifyResult.innerHTML = `
                 <div class="success-message">
                     <i class="fas fa-check-circle"></i> ${data.message}
@@ -140,7 +140,7 @@ async function spotifyDownload() {
                         </ul>
                     </div>
                     ${data.download_url ? `
-                        <a href="${data.download_url}" download="${data.filename}" class="download-btn">
+                        <a href="${apiUrlInput}${data.download_url}" download="${data.filename}" class="download-btn">
                             <i class="fas fa-file-archive"></i> Descargar ZIP (${data.filename})
                         </a>
                     ` : ''}
@@ -176,7 +176,7 @@ async function spotifyListFiles() {
             })
         });
         const data = await response.json();
-        
+        console.log(data);
         if (data.success && data.files.length > 0) {
             const filesHtml = data.files.map(file => `
                 <div class="file-item">
@@ -186,7 +186,7 @@ async function spotifyListFiles() {
                         <span class="file-size">${file.size || ''}</span>
                     </div>
                     <div class="file-actions">
-                        <a href="${apiUrlInput}${API_ENDPOINTS.DOWNLOAD_FILE}${file.name}" class="btn-download-small" download>
+                        <a href="${apiUrlInput}${API_ENDPOINTS.DOWNLOAD_FILE}${data.key}${file.name}" class="btn-download-small" download>
                             <i class="fas fa-download"></i> Descargar
                         </a>
                         <button class="btn-delete-small" onclick="spotifyDeleteFile('${file.name}')">

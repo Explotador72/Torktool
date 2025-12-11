@@ -381,9 +381,13 @@ body::before {
 
 
 .yt-input-group button {
-    flex: 1 1 30%;  /* Los botones ocupan 30% */
+    flex: 1;  /* Los botones ocupan 30% */
     display: flex;
     gap: 10px;
+}
+
+.yt-input-group input {
+    flex: 4;  
 }
 
 /* Botón YouTube */
