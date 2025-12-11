@@ -189,7 +189,7 @@ async function spotifyListFiles() {
                         <a href="${apiUrlInput}${API_ENDPOINTS.DOWNLOAD_FILE}${data.key}${file.name}" class="btn-download-small" download>
                             <i class="fas fa-download"></i> Descargar
                         </a>
-                        <button class="btn-delete-small" onclick="spotifyDeleteFile('${file.name}')">
+                        <button class="btn-delete-small" onclick="spotifyDeleteFile('${data.key}','${file.name}')">
                             <i class="fas fa-trash"></i>
                         </button>
                     </div>
@@ -210,18 +210,17 @@ async function spotifyListFiles() {
     }
 }
 
-async function spotifyDeleteFile(filename) {
+async function spotifyDeleteFile(key,filename) {
     if (!confirm(`¿Eliminar ${filename}?`)) return;
     
     try {
-        const response = await fetch(`${apiUrlInput}${API_ENDPOINTS.DELETE_FILE + filename}`, {
+        const response = await fetch(`${apiUrlInput}${API_ENDPOINTS.DELETE_FILE}${key}${filename}`, {
             method: 'DELETE'
         });
         
         const data = await response.json();
         
         if (data.success) {
-            alert(data.message);
             spotifyListFiles();
         }
     } catch (error) {
