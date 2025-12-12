@@ -113,7 +113,7 @@ async function startProcess(event) {
 }
 
 
-function renderPreviews(url) {
+function renderPreviewsYT(url) {
     videoUrl = ytList.at(-1);
     const div = document.createElement("div");
     div.className = "preview-thumb-yt";
@@ -172,7 +172,7 @@ function addUrl() {
     console.log("Lista de URLs de YouTube:", ytList);
     videoUrlInput.value = "";
     addUrlBtn.disabled = true;
-    renderPreviews();
+    renderPreviewsYT();
 };
 
 

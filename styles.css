@@ -154,60 +154,135 @@ body::before {
     margin-bottom: 20px;
 }
 
-/* PDF Tool */
+/* CONTENEDOR PRINCIPAL */
+#imgpdf.tab-content {
+    padding: 20px;
+    animation: fadeIn 0.3s ease;
+}
+
+/* TÍTULO */
+#imgpdf .tool-title {
+    font-size: 26px;
+    font-weight: 600;
+    margin-bottom: 15px;
+    text-align: center;
+    color: rgb(255, 255, 255);
+}
+
+/* CONTENEDOR DE HERRAMIENTA */
 .pdf-tool {
     display: flex;
     flex-direction: column;
-    gap: 14px;
-    margin-top: 10px;
+    gap: 15px;
+    max-width: 90%;
+    margin: 0 auto;
 }
 
-.pdf-tool input {
-  padding: 12px 16px;
-  background: rgba(20, 20, 30, 0.8);
-  border: 2px solid rgba(255, 255, 255, 0.1);
-  border-radius: 10px;
-  color: #fff;
-  font-size: 14px;
-  transition: all 0.3s;
-}
-
-.pdf-tool input:hover, .pdf-tool input:focus {
-  border-color: #c5b314;
-  box-shadow: 0 0 0 3px rgba(197, 179, 20, 0.2);
-  outline: none;
-}
-
-#imgInput {
-    padding: 8px;
+/* INPUT TEXTO */
+#nameInput {
+    padding: 10px 12px;
+    font-size: 16px;
     border-radius: 8px;
-    background: #1a1a1a;
-    border: 1px solid #444;
-    color: #eee;
+    border: 2px solid #000000;
+    outline: none;
+    transition: 0.3s;
 }
 
-#convertPdfBtn {
+#nameInput:focus {
+    border-color: #777777;
+    box-shadow: 0 0 5px rgba(255,0,0,0.3);
+}
+
+/* GRUPO DE ARCHIVOS */
+.input-group {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+/* LABEL PARA INPUT DE ARCHIVOS */
+.file-input-label {
+    background: #d6d6d6;
+    border: 2px dashed #000000;
     padding: 12px;
-    background: #f7d048;
-    color: #1e1e1e;
-    font-weight: bold;
-    border: none;
     border-radius: 10px;
+    text-align: center;
     cursor: pointer;
-    transition: 0.2s;
+    transition: 0.3s;
+    position: relative;
 }
 
-#convertPdfBtn:hover:not(:disabled) {
-    background: #e3c23f;
-    transform: translateY(-2px);
+.file-input-label:hover {
+    background: #ffe2e2;
+}
+
+/* TEXTO DEL LABEL */
+.label-text {
+    display: block;
+    font-weight: 600;
+    font-size: 16px;
+    color: #292929;
+    margin-bottom: 5px;
+}
+
+/* CANTIDAD DE ARCHIVOS SELECCIONADOS */
+.file-count {
+    font-size: 14px;
+    color: rgb(221, 199, 0);
+    display: block;
+}
+
+/* INPUT REAL OCULTO */
+#imgInput {
+    display: none;
+}
+
+/* TEXTO INFO */
+.file-info {
+    font-size: 13px;
+    color: #666;
+    text-align: center;
+}
+
+/* BOTÓN PARA CONVERTIR */
+#convertPdfBtn {
+    padding: 10px;
+    border: none;
+    border-radius: 8px;
+    background: #e0ba0f;
+    color: rgb(255, 255, 255);
+    text-shadow:
+        -1px -1px 0 rgba(0, 0, 0, 0.568),
+         1px -1px 0 rgba(0, 0, 0, 0.568),
+        -1px  1px 0 rgba(0, 0, 0, 0.568),
+         1px  1px 0 rgba(0, 0, 0, 0.568);
+    font-size: 18px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: 0.3s;
 }
 
 #convertPdfBtn:disabled {
-    opacity: 0.4;
-    cursor: default;
+    background: #cabb3383;
+    color: rgb(182, 182, 182);
+    cursor: not-allowed;
 }
 
-/* Preview Thumbnails */
+#convertPdfBtn:not(:disabled):hover {
+    background: #928407d8;
+    box-shadow: 0 0 0 3px rgba(197, 179, 20, 0.2);
+}
+
+/* CHECKBOX */
+.pdf-tool label {
+    font-size: 15px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+}
+
+/* PREVISUALIZACIÓN */
 .preview-pdf {
     display: flex;
     flex-wrap: wrap;
@@ -216,12 +291,12 @@ body::before {
 }
 
 .preview-thumb {
-    width: 140px;
-    height: 110px;
+    width: 220px;
+    height: 220px;
     border: 1px solid #444;
     border-radius: 10px;
     overflow: hidden;
-    display: flex;
+    display: inline-block;
     position: relative;
     justify-content: center;
     align-items: center;
@@ -269,8 +344,8 @@ body::before {
 }
 
 .preview-thumb-yt img {
-    max-width: 100px;
-    max-height: 100px;
+    max-width: 300px;
+    max-height: 300px;
     object-fit: contain;
 }
 
@@ -319,6 +394,7 @@ body::before {
     border-radius: 50%;
     cursor: pointer;
     transition: 0.2s;
+    z-index: 10;
 }
 
 .close-btn:hover {
@@ -328,20 +404,102 @@ body::before {
 /* Número índice */
 .index-number {
     position: absolute;
-    bottom: 6px;
-    right: 6px;
-    background: rgba(0, 0, 0, 0.75);
+    bottom: 5px;
+    right: 5px;
+    background: rgba(0,0,0,0.6);
     color: white;
-    padding: 3px 6px;
-    font-size: 11px;
-    border-radius: 5px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 12px;
+    z-index: 10;
 }
 
-/* Etiquetas */
-.pdf-tool label {
-    font-size: 14px;
-    color: #ffd900;
+.rotate-btn {
+  position: absolute;
+  top: 5px;
+  right: 8px; /* Espacio para el botón de cerrar */
+  background: rgba(81, 95, 107, 0.644);
+  color: white;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  cursor: pointer;
+  z-index: 2;
+  transition: all 0.2s ease;
+  user-select: none;
 }
+
+.rotate-btn:hover {
+  background: #d42506ad;
+  transform: scale(1.1);
+}
+
+.rotate-btn:active {
+  transform: scale(0.95) rotate(90deg);
+  transition: transform 0.1s;
+}
+
+.drop-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(76, 175, 80, 0.9);
+    border: 5px dashed white;
+    z-index: 999;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(5px);
+    animation: pulseBorder 1.5s infinite;
+}
+
+/* Cuando se está arrastrando un archivo */
+.drop-overlay.active {
+    display: flex;
+}
+
+/* Contenido del overlay */
+.drop-content {
+    text-align: center;
+    color: white;
+    padding: 40px;
+    background: rgba(0, 0, 0, 0.7);
+    border-radius: 20px;
+    max-width: 80%;
+    animation: fadeIn 0.3s ease;
+}
+
+.drop-icon {
+    font-size: 80px;
+    display: block;
+    margin-bottom: 20px;
+    animation: bounce 1s infinite;
+}
+
+.drop-content p {
+    font-size: 24px;
+    margin: 10px 0;
+    font-weight: bold;
+}
+
+.drop-subtext {
+    font-size: 18px;
+    opacity: 0.9;
+    font-weight: normal;
+}
+
+/* Animación entrada */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(5px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
 
 /* YouTube Tool */
 .yt-tool {
@@ -422,6 +580,7 @@ body::before {
     flex-wrap: wrap;
     justify-content: center;
     padding: 15px;
+    z-index: 1000;
   }
   
   .sidebar h2 {

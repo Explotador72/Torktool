@@ -21,12 +21,33 @@
   </div>
 
   <div class="content">
+    <div id="dropOverlay" class="drop-overlay" role="dialog" aria-labelledby="dropOverlayTitle" aria-hidden="true">
+        <div class="drop-content">
+            <span class="drop-icon" aria-hidden="true">📁</span>
+            <p id="dropOverlayTitle">Suelta aquí para añadir imágenes</p>
+            <p class="drop-subtext">Se añadirán al conversor de PDF</p>
+        </div>
+    </div>
+    
     <div id="imgpdf" class="tab-content active">
         <h3 class="tool-title">Convertir Imagen a PDF</h3>
         <div class="pdf-tool">
-            <input id="imgInput" type="file" accept="image/*" multiple>
-            <button id="convertPdfBtn" disabled>Convertir a PDF</button>
             <input id="nameInput" type="text" placeholder="Nombre del archivo PDF">
+            <div class="input-group">
+                <label for="imgInput" class="file-input-label">
+                    <span class="label-text">Seleccionar imágenes</span>
+                    <span class="file-count" id="fileCount" aria-live="polite" aria-atomic="true"></span>
+                    <input id="imgInput" 
+                           type="file" 
+                           accept="image/*" 
+                           multiple 
+                           aria-describedby="fileInfo">
+                </label>
+                <p id="fileInfo" class="file-info" aria-live="polite">
+                    Formatos aceptados: JPG, PNG, GIF, WEBP
+                </p>
+            </div>
+            <button id="convertPdfBtn" disabled>Convertir a PDF</button>
             <label>
               <input type="checkbox" id="sizeCheckbox" checked>
               Tamaño imágenes uniforme
