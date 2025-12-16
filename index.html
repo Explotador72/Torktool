@@ -47,10 +47,16 @@
                 </p>
             </div>
             <button id="convertPdfBtn" disabled>Convertir a PDF</button>
-            <label>
-              <input type="checkbox" id="sizeCheckbox" checked>
-              Tamaño imágenes uniforme
-            </label>
+            <div class="checkbox-group">
+              <label>
+                <input type="checkbox" id="A4Checkbox" unchecked>
+                Tamaño A4
+              </label>
+              <label>
+                <input type="checkbox" id="UniformCheckbox" checked>
+                Uniforme
+              </label>
+            </div>
             <div id="previewPdf" class="preview-pdf"></div>
         </div>
     </div>
@@ -96,7 +102,7 @@
           <p id="advisorMessage"></p>
         </div>
       </div>
-
+      <div class="spotify-results">
         <div class="result" id="spotifyResult">
           <div class="placeholder">
             <p>La información de la playlist aparecerá aquí</p>
@@ -133,7 +139,7 @@
         </div>
       </div>
     </div>
-
+    
     <div id="converter" class="tab-content">
       <h3 class="tool-title">Conversor de audio a texto</h3>
       <div class="audio-tool">
@@ -145,7 +151,6 @@
   </div>
 
   <script>
-    // Tab switching functionality
     const buttons = document.querySelectorAll('.tab-btn');
     const tabs = document.querySelectorAll('.tab-content');
 

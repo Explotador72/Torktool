@@ -3,15 +3,38 @@ const imgInput = document.getElementById("imgInput");
 const btnPdf = document.getElementById("convertPdfBtn");
 const previewPdf = document.getElementById("previewPdf");
 const fileName = document.getElementById("nameInput");
-const sizeCheckbox = document.getElementById("sizeCheckbox");
+const A4Checkbox = document.getElementById("A4Checkbox");
+const uniformCheckbox = document.getElementById("UniformCheckbox");
 const dropOverlay = document.getElementById("dropOverlay");
+const pdfconvert = document.getElementById("imgpdf");
+
 
 const MAX_WIDTH = 190; // mm
 const MAX_HEIGHT = 277; // A4 tamaño aproximado
 
+let currentLightboxIndex = 0;
+let currentLightboxModal = null;
+
 let images = [];
 let isDraggingOver = false;
 let internalDrag = false;
+
+
+A4Checkbox.addEventListener('change', () => {
+    if (A4Checkbox.checked) {
+        uniformCheckbox.checked = false;
+    } else {
+        uniformCheckbox.checked = true;
+    }
+});
+
+uniformCheckbox.addEventListener('change', () => {
+    if (uniformCheckbox.checked) {
+        A4Checkbox.checked = false;
+    } else {
+        A4Checkbox.checked = true;
+    }
+});
 
 // Mostrar miniaturas
 imgInput.addEventListener("change", () => {
@@ -28,7 +51,7 @@ document.addEventListener('dragenter', e => {
   if (!internalDrag) {
     if (e.dataTransfer.types.includes('Files')) {
       e.preventDefault();
-      if (!isDraggingOver) {
+      if (!isDraggingOver && pdfconvert.classList.contains('active')) {
         isDraggingOver = true;
         dropOverlay.classList.add('active');
       }
@@ -54,7 +77,7 @@ document.addEventListener('drop', e => {
     e.preventDefault();
     isDraggingOver = false;
     dropOverlay.classList.remove('active');
-    if (e.dataTransfer.files.length > 0) {
+    if (e.dataTransfer.files.length > 0 && pdfconvert.classList.contains('active')) {
       handleImageFiles(e.dataTransfer.files);
     }
   }});
@@ -98,6 +121,9 @@ function renderPreviewsImg() {
 
     const img = document.createElement("img");
     img.src = url;
+    img.addEventListener("click", () => {
+      createLightboxModal(index);
+    });
     if (item.rotationAngle) {
       img.style.transform = `rotate(${item.rotationAngle}deg)`;
     }
@@ -148,6 +174,135 @@ function renderPreviewsImg() {
     internalDrag = false;
   });
 }
+
+
+function createLightboxModal(startIndex) {
+    // Cerrar modal anterior si existe
+    if (currentLightboxModal) {
+        currentLightboxModal.remove();
+    }
+    
+    currentLightboxIndex = startIndex;
+    const currentItem = images[currentLightboxIndex];
+    
+    const modal = document.createElement("div");
+    modal.className = "lightbox-modal";
+    
+    modal.innerHTML = `
+        <div class="lightbox-content">
+            <button class="lightbox-close">✕</button>
+            <button class="lightbox-nav lightbox-prev" ${currentLightboxIndex === 0 ? 'disabled' : ''}>
+                ‹
+            </button>
+            <button class="lightbox-nav lightbox-next" ${currentLightboxIndex === images.length - 1 ? 'disabled' : ''}>
+                ›
+            </button>
+            <img src="" class="lightbox-img" alt="Vista previa ampliada">
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    currentLightboxModal = modal;
+    
+    const lightboxImg = modal.querySelector(".lightbox-img");
+    const prevBtn = modal.querySelector(".lightbox-prev");
+    const nextBtn = modal.querySelector(".lightbox-next");
+    const closeBtn = modal.querySelector(".lightbox-close");
+    const infoSpan = modal.querySelector(".lightbox-info span:last-child");
+    
+    // Cargar imagen actual
+    lightboxImg.src = URL.createObjectURL(currentItem.file);
+    if (currentItem.rotationAngle) {
+        lightboxImg.style.transform = `rotate(${currentItem.rotationAngle}deg)`;
+    }
+    
+    // Función para cambiar de imagen
+    function changeImage(newIndex) {
+        if (newIndex < 0 || newIndex >= images.length) return;
+        
+        currentLightboxIndex = newIndex;
+        const newItem = images[currentLightboxIndex];
+        
+        // Actualizar imagen
+        const newUrl = URL.createObjectURL(newItem.file);
+        lightboxImg.src = newUrl;
+        
+        // Aplicar rotación si existe
+        if (newItem.rotationAngle) {
+            lightboxImg.style.transform = `rotate(${newItem.rotationAngle}deg)`;
+        } else {
+            lightboxImg.style.transform = 'none';
+        }
+                
+        // Actualizar estado de botones
+        prevBtn.disabled = currentLightboxIndex === 0;
+        nextBtn.disabled = currentLightboxIndex === images.length - 1;
+    }
+    
+    // Eventos de navegación
+    prevBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (currentLightboxIndex > 0) {
+            changeImage(currentLightboxIndex - 1);
+        }
+    });
+    
+    nextBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (currentLightboxIndex < images.length - 1) {
+            changeImage(currentLightboxIndex + 1);
+        }
+    });
+    
+    // Navegación con teclado
+    const handleKeyDown = (e) => {
+        switch(e.key) {
+            case "ArrowLeft":
+                if (currentLightboxIndex > 0) {
+                    changeImage(currentLightboxIndex - 1);
+                }
+                break;
+            case "ArrowRight":
+                if (currentLightboxIndex < images.length - 1) {
+                    changeImage(currentLightboxIndex + 1);
+                }
+                break;
+            case "Escape":
+                closeLightbox();
+                break;
+        }
+    };
+    
+    // Mostrar modal
+    setTimeout(() => {
+        modal.classList.add("active");
+        document.addEventListener("keydown", handleKeyDown);
+    }, 10);
+    
+    // Función para cerrar el lightbox
+    function closeLightbox() {
+        modal.classList.remove("active");
+        document.removeEventListener("keydown", handleKeyDown);
+        setTimeout(() => {
+            if (modal.parentNode) {
+                modal.remove();
+            }
+            currentLightboxModal = null;
+        }, 300);
+    }
+    
+    // Cerrar al hacer clic
+    closeBtn.addEventListener("click", closeLightbox);
+    
+    modal.addEventListener("click", (e) => {
+        if (e.target === modal) {
+            closeLightbox();
+        }
+    });
+    
+    return modal;
+}
+
 
 function handleImageFiles(fileList) {
   const validFiles = Array.from(fileList).filter(f => f.type.startsWith('image/'));
@@ -202,8 +357,7 @@ btnPdf.addEventListener("click", async () => {
 
     let w, h;
     const pxToMm = 0.264583;
-    if (sizeCheckbox.checked) {
-      console.log("deber")
+    if (A4Checkbox.checked) {
       const aspectRatio = img.width / img.height;
       if (aspectRatio > 1) {
         w = MAX_WIDTH;
@@ -211,6 +365,17 @@ btnPdf.addEventListener("click", async () => {
       } else {
         h = MAX_HEIGHT;
         w = MAX_HEIGHT * aspectRatio;
+      }
+    } else if(uniformCheckbox.checked) {
+      const UNIFORM_WIDTH = 150;
+      const UNIFORM_HEIGHT = 200;
+      const aspectRatio = img.width / img.height;
+      if (aspectRatio > 1) {
+        w = UNIFORM_WIDTH;
+        h = UNIFORM_WIDTH / aspectRatio;
+      } else {
+        h = UNIFORM_HEIGHT;
+        w = UNIFORM_HEIGHT * aspectRatio;
       }
     } else {
       w = img.width * pxToMm;
