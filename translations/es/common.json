@@ -1,0 +1,104 @@
+{
+  "app": {
+    "title": "TorkTool - Centro de utilidades",
+    "brand_prefix": "Tork",
+    "brand_suffix": "Tool",
+    "version": "v2.0 · Pro Edition"
+  },
+  "status": {
+    "online": "Agente Local Activo",
+    "offline": "Agente Local Desconectado",
+    "configure": "Configurar",
+    "modal_online": "Agente configurado correctamente",
+    "modal_offline": "Agente no detectado"
+  },
+  "sidebar": {
+    "media": "Media Downloader",
+    "pdf": "IMG → PDF",
+    "transcriber": "Audio a Texto"
+  },
+  "media": {
+    "title": "Media Downloader",
+    "description": "Descarga canciones o playlists de YouTube y Spotify automáticamente.",
+    "placeholder": "Pega el link de YouTube o Spotify aquí...",
+    "process": "Procesar",
+    "format_mp3": "MP3 (Audio)",
+    "format_mp4": "MP4 (Video)",
+    "history": "Descargas Recientes",
+    "empty_recent": "No hay descargas recientes aún.",
+    "loading": "Obteniendo información...",
+    "invalid_url": "Por favor ingresa un link válido.",
+    "unsupported_url": "Link no reconocido. Soporta YouTube y Spotify.",
+    "spotify_playlist": "Playlist de Spotify",
+    "youtube_video": "Video de YouTube",
+    "youtube_media": "YouTube Media",
+    "youtube_author": "YouTube Media",
+    "download_now": "Descargar ahora",
+    "songs_one": "{{count}} canción",
+    "songs_other": "{{count}} canciones",
+    "files_one": "{{count}} archivo",
+    "files_other": "{{count}} archivos",
+    "download_started": "¡Descarga iniciada! Revisa la sección de \"Descargas Recientes\" en unos segundos.",
+    "spotify_start": "Iniciando descarga de Spotify...",
+    "spotify_unpacking": "Descargando y empaquetando...",
+    "youtube_processing": "Procesando YouTube...",
+    "ready_to_download": "Listo para descargar"
+  },
+  "pdf": {
+    "title": "Imagen a PDF",
+    "description": "Convierte tus fotos (JPG, PNG, HEIC) en un documento PDF profesional en segundos.",
+    "filename_label": "Nombre del archivo",
+    "filename_placeholder": "Ej: Documento_Escaneado",
+    "fit_label": "Ajuste de página",
+    "size_a4": "Tamaño A4",
+    "uniform": "Uniforme",
+    "upload_title": "Haz clic o arrastra tus imágenes",
+    "upload_desc": "Soporta JPG, PNG, WEBP y HEIC (iPhone)",
+    "images_selected_zero": "0 imágenes seleccionadas",
+    "images_selected_one": "{{count}} imagen seleccionada",
+    "images_selected_other": "{{count}} imágenes seleccionadas",
+    "generate": "Generar Documento PDF",
+    "generating": "Generando PDF...",
+    "rotate": "Rotar",
+    "delete": "Eliminar",
+    "no_images": "No has seleccionado imágenes todavía."
+  },
+  "transcriber": {
+    "title": "Audio a Texto",
+    "description": "Transforma grabaciones de voz en texto editable usando IA.",
+    "upload_prompt": "Sube o arrastra tus archivos de audio",
+    "browse_files": "Explorar Archivos",
+    "start": "Empezar Transcripción",
+    "transcribing": "Transcribiendo...",
+    "analyzing": "Analizando audio...",
+    "extracting": "Extrayendo texto...",
+    "selected_one": "{{count}} archivo seleccionado",
+    "selected_other": "{{count}} archivos seleccionados",
+    "placeholder": "El texto aparecerá aquí...",
+    "note_title": "[Nota]",
+    "placeholder_result": "La transcripción requiere un modelo de IA en el Agente. Por ahora, este es un placeholder. En una versión futura integraremos Whisper local."
+  },
+  "modal": {
+    "title": "TorkTool Pro Agent",
+    "description": "El Agente Local permite procesar descargas de música y archivos pesados en tu computadora.",
+    "step1_prefix": "Ejecuta",
+    "step2": "Acepta los permisos de red si se solicitan.",
+    "step3": "La web se conectará automáticamente."
+  },
+  "overlay": {
+    "title": "Suelta para añadir",
+    "description": "Tus archivos se procesarán automáticamente"
+  },
+  "progress": {
+    "processing": "Procesando...",
+    "audio_processing": "Procesando audio...",
+    "audio_extracting": "Extrayendo texto...",
+    "heic_conversion": "Convirtiendo HEIC"
+  },
+  "common": {
+    "refresh": "Actualizar",
+    "understood": "Entendido",
+    "error": "Error",
+    "download_now": "Descargar ahora"
+  }
+}

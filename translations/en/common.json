@@ -1,0 +1,104 @@
+{
+  "app": {
+    "title": "TorkTool - Utility Hub",
+    "brand_prefix": "Tork",
+    "brand_suffix": "Tool",
+    "version": "v2.0 · Pro Edition"
+  },
+  "status": {
+    "online": "Local Agent Online",
+    "offline": "Local Agent Offline",
+    "configure": "Configure",
+    "modal_online": "Agent configured correctly",
+    "modal_offline": "Agent not detected"
+  },
+  "sidebar": {
+    "media": "Media Downloader",
+    "pdf": "IMG → PDF",
+    "transcriber": "Audio to Text"
+  },
+  "media": {
+    "title": "Media Downloader",
+    "description": "Download songs or playlists from YouTube and Spotify automatically.",
+    "placeholder": "Paste the YouTube or Spotify link here...",
+    "process": "Process",
+    "format_mp3": "MP3 (Audio)",
+    "format_mp4": "MP4 (Video)",
+    "history": "Recent Downloads",
+    "empty_recent": "There are no recent downloads yet.",
+    "loading": "Fetching information...",
+    "invalid_url": "Please enter a valid link.",
+    "unsupported_url": "Unrecognized link. YouTube and Spotify are supported.",
+    "spotify_playlist": "Spotify Playlist",
+    "youtube_video": "YouTube Video",
+    "youtube_media": "YouTube Media",
+    "youtube_author": "YouTube Media",
+    "download_now": "Download now",
+    "songs_one": "{{count}} song",
+    "songs_other": "{{count}} songs",
+    "files_one": "{{count}} file",
+    "files_other": "{{count}} files",
+    "download_started": "Download started! Check \"Recent Downloads\" in a few seconds.",
+    "spotify_start": "Starting Spotify download...",
+    "spotify_unpacking": "Downloading and packaging...",
+    "youtube_processing": "Processing YouTube...",
+    "ready_to_download": "Ready to download"
+  },
+  "pdf": {
+    "title": "Image to PDF",
+    "description": "Turn your photos (JPG, PNG, HEIC) into a professional PDF document in seconds.",
+    "filename_label": "File name",
+    "filename_placeholder": "E.g. Scanned_Document",
+    "fit_label": "Page fit",
+    "size_a4": "A4 size",
+    "uniform": "Uniform",
+    "upload_title": "Click or drag your images",
+    "upload_desc": "Supports JPG, PNG, WEBP and HEIC (iPhone)",
+    "images_selected_zero": "0 images selected",
+    "images_selected_one": "{{count}} image selected",
+    "images_selected_other": "{{count}} images selected",
+    "generate": "Generate PDF Document",
+    "generating": "Generating PDF...",
+    "rotate": "Rotate",
+    "delete": "Delete",
+    "no_images": "No images have been selected yet."
+  },
+  "transcriber": {
+    "title": "Audio to Text",
+    "description": "Turn voice recordings into editable text using AI.",
+    "upload_prompt": "Upload or drag your audio files",
+    "browse_files": "Browse Files",
+    "start": "Start Transcription",
+    "transcribing": "Transcribing...",
+    "analyzing": "Analyzing audio...",
+    "extracting": "Extracting text...",
+    "selected_one": "{{count}} file selected",
+    "selected_other": "{{count}} files selected",
+    "placeholder": "The text will appear here...",
+    "note_title": "[Note]",
+    "placeholder_result": "Transcription requires an AI model in the Agent. For now, this is a placeholder. A future version will integrate local Whisper."
+  },
+  "modal": {
+    "title": "TorkTool Pro Agent",
+    "description": "The Local Agent lets you process music downloads and heavy files on your computer.",
+    "step1_prefix": "Run",
+    "step2": "Accept network permissions if prompted.",
+    "step3": "The web app will connect automatically."
+  },
+  "overlay": {
+    "title": "Drop to add",
+    "description": "Your files will be processed automatically"
+  },
+  "progress": {
+    "processing": "Processing...",
+    "audio_processing": "Processing audio...",
+    "audio_extracting": "Extracting text...",
+    "heic_conversion": "Converting HEIC"
+  },
+  "common": {
+    "refresh": "Refresh",
+    "understood": "Understood",
+    "error": "Error",
+    "download_now": "Download now"
+  }
+}

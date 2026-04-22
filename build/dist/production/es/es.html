@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TorkTool - Centro de utilidades</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="assets/css/styles.css">
+    <link rel="icon" type="image/png" href="img/torken.png">
+</head>
+<body>
+  <div id="backendStatus" class="status-bar offline">
+    <div class="status-dot"></div>
+    <span id="statusText">Agente Local Desconectado</span>
+    <button id="openAgentModalBtn" class="btn-setup">Configurar</button>
+  </div>
+
+  <div class="app-container">
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <img src="img/torken.png" alt="Logo" class="logo">
+        <h1><span>Tork</span><span>Tool</span></h1>
+      </div>
+
+      <nav class="sidebar-nav">
+        <button class="nav-btn active" data-tab="media">
+          <i class="fas fa-compact-disc"></i>
+          <span>Media Downloader</span>
+        </button>
+        <button class="nav-btn" data-tab="imgpdf">
+          <i class="fas fa-file-pdf"></i>
+          <span>IMG → PDF</span>
+        </button>
+        <button class="nav-btn" data-tab="converter">
+          <i class="fas fa-microphone-lines"></i>
+          <span>Audio a Texto</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <p>v2.0 · Pro Edition</p>
+      </div>
+    </aside>
+
+    <main class="main-content">
+      <section id="media" class="tab-content active">
+        <div class="content-header">
+          <h2>Media Downloader</h2>
+          <p>Descarga canciones o playlists de YouTube y Spotify automáticamente.</p>
+        </div>
+
+        <div class="tool-card main-input-card">
+          <div class="input-wrapper">
+            <i class="fas fa-link link-icon"></i>
+            <input type="text" id="mediaUrl" placeholder="Pega el link de YouTube o Spotify aquí...">
+            <button id="processMediaBtn" class="btn-primary">
+              <i class="fas fa-bolt"></i>
+              <span>Procesar</span>
+            </button>
+          </div>
+          <div class="format-options">
+            <label class="chip-label">
+              <input type="radio" name="format" value="mp3" checked>
+              <span>MP3 (Audio)</span>
+            </label>
+            <label class="chip-label">
+              <input type="radio" name="format" value="mp4">
+              <span>MP4 (Video)</span>
+            </label>
+          </div>
+        </div>
+
+        <div id="mediaResult" class="result-container"></div>
+
+        <div class="media-history">
+          <div class="history-header">
+            <h3><i class="fas fa-clock-rotate-left"></i> <span>Descargas Recientes</span></h3>
+            <button id="refreshMediaBtn" class="btn-icon" title="Actualizar">
+              <i class="fas fa-sync-alt"></i>
+            </button>
+          </div>
+          <div id="mediaFilesList" class="files-grid">
+            <div class="empty-state">
+              <i class="fas fa-cloud-arrow-down"></i>
+              <p>No hay descargas recientes aún.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="imgpdf" class="tab-content">
+        <div class="content-header">
+          <h2>Imagen a PDF</h2>
+          <p>Convierte tus fotos (JPG, PNG, HEIC) en un documento PDF profesional en segundos.</p>
+        </div>
+
+        <div class="pdf-workflow">
+          <div class="tool-card pdf-config-card">
+            <div class="config-grid">
+              <div class="modern-input-group">
+                <label><i class="fas fa-signature"></i> <span>Nombre del archivo</span></label>
+                <div class="input-with-icon">
+                  <input id="nameInput" type="text" placeholder="Ej: Documento_Escaneado">
+                  <span class="extension-tag">.pdf</span>
+                </div>
+              </div>
+
+              <div class="modern-input-group">
+                <label><i class="fas fa-expand"></i> <span>Ajuste de página</span></label>
+                <div class="toggle-selector">
+                  <label class="toggle-option">
+                    <input type="radio" name="pdfFormat" id="A4Checkbox">
+                    <div class="option-content">
+                      <i class="fas fa-file-lines"></i>
+                      <span>Tamaño A4</span>
+                    </div>
+                  </label>
+                  <label class="toggle-option">
+                    <input type="radio" name="pdfFormat" id="UniformCheckbox" checked>
+                    <div class="option-content">
+                      <i class="fas fa-border-all"></i>
+                      <span>Uniforme</span>
+                    </div>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="upload-zone" id="pdfDropZone" tabindex="0" role="button">
+            <div class="upload-content">
+              <div class="upload-icon-stack">
+                <i class="fas fa-cloud-arrow-up main-icon"></i>
+                <i class="fas fa-image sub-icon"></i>
+              </div>
+              <div class="upload-text">
+                <h3>Haz clic o arrastra tus imágenes</h3>
+                <p>Soporta JPG, PNG, WEBP y HEIC (iPhone)</p>
+              </div>
+              <input id="imgInput" type="file" accept="image/*,.heic" multiple hidden>
+            </div>
+          </div>
+
+          <div class="pdf-actions" id="pdfActionsArea" style="display: none;">
+            <div class="selection-info">
+              <i class="fas fa-images"></i>
+              <span id="imageCountText">0 imágenes seleccionadas</span>
+            </div>
+            <button id="convertPdfBtn" class="btn-primary btn-large" disabled>
+              <i class="fas fa-file-export"></i>
+              <span>Generar Documento PDF</span>
+            </button>
+          </div>
+        </div>
+
+        <div id="previewPdf" class="image-grid-modern"></div>
+      </section>
+
+      <section id="converter" class="tab-content">
+        <div class="content-header">
+          <h2>Audio a Texto</h2>
+          <p>Transforma grabaciones de voz en texto editable usando IA.</p>
+        </div>
+
+        <div class="tool-card transcriber-card">
+          <div class="drop-zone" id="audioDropZone">
+            <i class="fas fa-microphone-lines"></i>
+            <p>Sube o arrastra tus archivos de audio</p>
+            <input type="file" id="audioInput" accept="audio/*" hidden>
+            <button id="audioBrowseBtn" class="btn-outline">Explorar Archivos</button>
+          </div>
+
+          <div class="transcriber-actions">
+            <button id="transcriptBtn" class="btn-primary" disabled>
+              <i class="fas fa-wand-magic-sparkles"></i>
+              <span>Empezar Transcripción</span>
+            </button>
+          </div>
+
+          <div id="transcriptOutput" class="text-output-area">El texto aparecerá aquí...</div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div id="dropOverlay" class="global-drop-overlay">
+    <div class="overlay-content">
+      <div class="icon-circle">
+        <i class="fas fa-file-import"></i>
+      </div>
+      <h2>Suelta para añadir</h2>
+      <p>Tus archivos se procesarán automáticamente</p>
+    </div>
+  </div>
+
+  <div id="agentModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <i class="fas fa-robot"></i>
+        <h3>TorkTool Pro Agent</h3>
+        <button id="closeAgentModalBtn" class="close-modal" type="button">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p>El Agente Local permite procesar descargas de música y archivos pesados en tu computadora.</p>
+        <div class="status-indicator online" id="modalStatus">
+          <i class="fas fa-check-circle"></i>
+          <span id="modalStatusText">Agente configurado correctamente</span>
+        </div>
+        <div class="setup-steps">
+          <div class="step">
+            <div class="step-icon">1</div>
+            <p>Ejecuta <code>TorkTool.exe</code></p>
+          </div>
+          <div class="step">
+            <div class="step-icon">2</div>
+            <p>Acepta los permisos de red si se solicitan.</p>
+          </div>
+          <div class="step">
+            <div class="step-icon">3</div>
+            <p>La web se conectará automáticamente.</p>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="modalOkBtn" type="button" class="btn-primary">Entendido</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="globalProgress" class="progress-toast">
+    <div class="progress-info">
+      <span id="progressLabel">Procesando...</span>
+      <span id="progressPercent">0%</span>
+    </div>
+    <div class="progress-track">
+      <div id="progressBar" class="progress-fill"></div>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
+
+  <script src="assets/js/app.js"></script>
+  <script src="assets/js/media.js"></script>
+  <script src="assets/js/pdf.js"></script>
+  <script src="assets/js/transcriber.js"></script>
+</body>
+</html>
