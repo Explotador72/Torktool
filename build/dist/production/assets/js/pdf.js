@@ -11,11 +11,11 @@
   const pdfDropZone = document.getElementById('pdfDropZone');
   const a4Checkbox = document.getElementById('A4Checkbox');
   const uniformCheckbox = document.getElementById('UniformCheckbox');
-  const MAX_EXPORT_DIMENSION = 1800;
+  const MAX_EXPORT_DIMENSION = 1200;
   const EXPORT_QUALITY = 0.82;
   const A4_PORTRAIT = { width: 794, height: 1123 };
   const A4_LANDSCAPE = { width: 1123, height: 794 };
-  const UNIFORM_MARGIN = 56;
+  const UNIFORM_MARGIN = 0;
 
   if (!imgInput || !btnPdf || !previewPdf || !fileNameInput || !pdfActionsArea || !imageCountText || !pdfDropZone) {
     return;
@@ -167,18 +167,20 @@
         const rotated = imageObject.rotation % 180 !== 0;
         const sourceWidth = rotated ? img.height : img.width;
         const sourceHeight = rotated ? img.width : img.height;
-        const scale = Math.min(1, MAX_EXPORT_DIMENSION / Math.max(sourceWidth, sourceHeight));
+        const scale = MAX_EXPORT_DIMENSION / Math.max(sourceWidth, sourceHeight);
         const targetWidth = Math.max(1, Math.round(sourceWidth * scale));
         const targetHeight = Math.max(1, Math.round(sourceHeight * scale));
 
         canvas.width = targetWidth;
         canvas.height = targetHeight;
 
-        ctx.fillStyle = '#ffffff';
+        const drawWidth = img.width * scale;
+        const drawHeight = img.height * scale;
+
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.translate(canvas.width / 2, canvas.height / 2);
         ctx.rotate((imageObject.rotation * Math.PI) / 180);
-        ctx.drawImage(img, -img.width / 2, -img.height / 2, img.width, img.height);
+        ctx.drawImage(img, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
 
         resolve({
           dataUrl: canvas.toDataURL('image/jpeg', EXPORT_QUALITY),
@@ -282,7 +284,7 @@
         pdf.addImage(image.dataUrl, 'JPEG', frame.x, frame.y, frame.width, frame.height, undefined, 'FAST');
       });
 
-      const fileName = fileNameInput.value || 'TorkTool_Document';
+      const fileName = fileNameInput.value || 'TorkTool';
       pdf.save(`${fileName}.pdf`);
     } finally {
       setGenerateButtonState(false);
