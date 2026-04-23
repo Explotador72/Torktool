@@ -93,6 +93,63 @@
     }
   }
 
+  function isFileDrag(event) {
+    const types = Array.from(event.dataTransfer?.types || []);
+    return types.includes('Files');
+  }
+
+  function bindGlobalFileDragOverlay() {
+    const dropOverlay = document.getElementById('dropOverlay');
+
+    if (!dropOverlay) {
+      return;
+    }
+
+    let dragDepth = 0;
+
+    const showOverlay = () => {
+      dropOverlay.classList.add('active');
+    };
+
+    const hideOverlay = () => {
+      dragDepth = 0;
+      dropOverlay.classList.remove('active');
+    };
+
+    document.addEventListener('dragenter', (event) => {
+      if (!isFileDrag(event)) {
+        return;
+      }
+
+      dragDepth += 1;
+      showOverlay();
+    });
+
+    document.addEventListener('dragover', (event) => {
+      if (!isFileDrag(event)) {
+        return;
+      }
+
+      event.preventDefault();
+      showOverlay();
+    });
+
+    document.addEventListener('dragleave', (event) => {
+      if (!isFileDrag(event)) {
+        return;
+      }
+
+      dragDepth = Math.max(0, dragDepth - 1);
+      if (dragDepth === 0) {
+        hideOverlay();
+      }
+    });
+
+    document.addEventListener('drop', hideOverlay);
+    document.addEventListener('dragend', hideOverlay);
+    window.addEventListener('blur', hideOverlay);
+  }
+
   async function checkConnectivity() {
     const statusDiv = document.getElementById('backendStatus');
     const statusText = document.getElementById('statusText');
@@ -171,6 +228,7 @@
     syncDocumentTitle();
     bindNavigation();
     bindControls();
+    bindGlobalFileDragOverlay();
     activateTab(getStoredTab());
     checkConnectivity();
     window.setInterval(checkConnectivity, 5000);

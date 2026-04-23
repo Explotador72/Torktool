@@ -879,6 +879,239 @@ body {
   }
 }
 
+@media (max-width: 768px) {
+  body {
+    height: auto;
+    min-height: 100vh;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
+  .app-container {
+    flex-direction: column;
+    min-height: 100vh;
+  }
+
+  .sidebar {
+    width: 100%;
+    padding: 16px;
+    border-right: none;
+    border-bottom: 1px solid var(--border-color);
+    position: sticky;
+    top: 0;
+  }
+
+  .sidebar-header {
+    margin-bottom: 16px;
+    justify-content: center;
+  }
+
+  .sidebar-header h1,
+  .nav-btn span,
+  .sidebar-footer {
+    display: block;
+  }
+
+  .sidebar-nav {
+    flex-direction: row;
+    overflow-x: auto;
+    gap: 10px;
+    padding-bottom: 4px;
+    scrollbar-width: none;
+  }
+
+  .sidebar-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .nav-btn {
+    flex: 1 0 180px;
+    justify-content: center;
+    padding: 12px 14px;
+  }
+
+  .status-bar {
+    position: sticky;
+    top: 0;
+    left: 0;
+    height: auto;
+    min-height: 48px;
+    padding: 12px 16px;
+    flex-wrap: wrap;
+  }
+
+  .status-bar span {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .btn-setup {
+    margin-left: 0;
+  }
+
+  .main-content {
+    padding: 24px 16px 32px;
+    overflow: visible;
+  }
+
+  .content-header {
+    margin-bottom: 24px;
+  }
+
+  .content-header h2 {
+    font-size: 28px;
+  }
+
+  .tool-card {
+    padding: 20px;
+    margin-bottom: 24px;
+    border-radius: 18px;
+  }
+
+  .input-wrapper,
+  .media-card,
+  .pdf-actions,
+  .modal-footer,
+  .history-header,
+  .media-meta {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .input-wrapper {
+    padding: 16px;
+  }
+
+  .input-wrapper input {
+    width: 100%;
+  }
+
+  .btn-primary,
+  .btn-outline,
+  .media-card .btn-primary,
+  .pdf-actions .btn-primary {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .format-options,
+  .toggle-selector,
+  .config-grid {
+    grid-template-columns: 1fr;
+    flex-direction: column;
+  }
+
+  .format-options {
+    display: grid;
+  }
+
+  .chip-label span {
+    text-align: center;
+  }
+
+  .media-cover {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 1;
+  }
+
+  .files-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .upload-zone {
+    padding: 32px 20px;
+  }
+
+  .pdf-actions {
+    gap: 16px;
+    padding: 18px;
+  }
+
+  .image-grid-modern {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .modal {
+    padding: 16px;
+  }
+
+  .modal-content {
+    max-width: none;
+    padding: 24px 20px;
+    border-radius: 20px;
+  }
+
+  .progress-toast {
+    left: 16px;
+    right: 16px;
+    bottom: 16px;
+    width: auto;
+  }
+}
+
+@media (max-width: 480px) {
+  .sidebar {
+    padding: 14px 12px;
+  }
+
+  .sidebar-header {
+    justify-content: flex-start;
+    padding: 0;
+  }
+
+  .nav-btn {
+    flex-basis: 150px;
+    font-size: 14px;
+  }
+
+  .status-bar {
+    gap: 10px;
+    padding: 10px 12px;
+  }
+
+  .main-content {
+    padding: 20px 12px 28px;
+  }
+
+  .content-header h2 {
+    font-size: 24px;
+  }
+
+  .content-header p,
+  .input-wrapper input,
+  .upload-text p,
+  .text-output-area {
+    font-size: 14px;
+  }
+
+  .tool-card,
+  .pdf-config-card {
+    padding: 16px !important;
+  }
+
+  .upload-zone {
+    padding: 24px 16px;
+    border-radius: 20px;
+  }
+
+  .upload-icon-stack {
+    margin-bottom: 12px;
+  }
+
+  .main-icon {
+    font-size: 40px;
+  }
+
+  .sub-icon {
+    font-size: 20px;
+  }
+
+  .image-grid-modern {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* Added app-specific utilities */
 .badge {
   display: inline-flex;
