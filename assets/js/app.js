@@ -1,9 +1,28 @@
 (function () {
   const t = (key, params) => window.i18n?.t(key, params) ?? key;
   const ACTIVE_TAB_KEY = 'torktool.activeTab';
+  const DEFAULT_LOCAL_AGENT_URL = 'http://127.0.0.1:7777';
 
   function getApiUrl() {
     return window.API_URL;
+  }
+
+  function resolveApiUrl() {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const explicitApi = params.get('api');
+      if (explicitApi) {
+        return explicitApi.replace(/\/$/, '');
+      }
+    } catch (error) {
+      // Ignore malformed query strings and keep fallback resolution.
+    }
+
+    const isLocalAgentOrigin =
+      (window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost') &&
+      window.location.port === '7777';
+
+    return isLocalAgentOrigin ? window.location.origin : DEFAULT_LOCAL_AGENT_URL;
   }
 
   function readCookie(name) {
@@ -234,7 +253,7 @@
     window.setInterval(checkConnectivity, 5000);
   }
 
-  window.API_URL = 'http://localhost:7777';
+  window.API_URL = resolveApiUrl();
   window.getApiUrl = getApiUrl;
   window.showGlobalProgress = showGlobalProgress;
   window.hideGlobalProgress = hideGlobalProgress;
@@ -252,3 +271,25 @@
     start();
   }
 })();
+
+async function setLatestStableDownload() {
+  const res = await fetch(
+    "https://api.github.com/repos/Explotador72/Torktool/releases"
+  );
+
+  const releases = await res.json();
+
+  const stable = releases.find(r => !r.prerelease);
+
+  const exe = stable.assets.find(a => a.name === "TorkTool.exe");
+
+  const btn = document.getElementById("download-btn");
+
+  btn.href = exe.browser_download_url;
+  btn.setAttribute("download", "TorkTool.exe");
+}
+
+
+document.getElementById("download-btn")?.addEventListener("click", async () => {
+  setLatestStableDownload();
+});

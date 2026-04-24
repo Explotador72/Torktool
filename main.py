@@ -47,9 +47,19 @@ logger = logging.getLogger(__name__)
 
 MAX_WORKERS = 6
 YTDL_TIMEOUT = 20
+LOCAL_AGENT_HOST = "127.0.0.1"
+LOCAL_AGENT_PORT = 7777
+WEB_APP_URL = os.environ.get("TORKTOOL_WEB_URL", "https://torktool.roftcore.work").rstrip("/")
+ALLOWED_ORIGINS = [
+    WEB_APP_URL,
+    "http://localhost:7777",
+    "http://127.0.0.1:7777",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={r"/api/*": {"origins": ALLOWED_ORIGINS}})
 
 
 def resolve_frontend_entry():
@@ -202,7 +212,13 @@ def serve_static(path):
 
 @app.route("/api/status", methods=["GET"])
 def status():
-    return jsonify({"status": "online", "version": "1.0.0"})
+    return jsonify({
+        "status": "online",
+        "version": "1.0.0",
+        "mode": "remote-bridge",
+        "local_api": f"http://{LOCAL_AGENT_HOST}:{LOCAL_AGENT_PORT}",
+        "web_app_url": WEB_APP_URL,
+    })
 
 @app.route("/api/playlist/info", methods=["POST"])
 def playlist_info():
@@ -287,11 +303,14 @@ def download_yt_urls():
     })
 
 def open_browser():
-    # Wait for server to start
+    # Wait for server to start and then open the hosted web app.
     time.sleep(1.5)
-    webbrowser.open("http://localhost:7777")
+    webbrowser.open(WEB_APP_URL)
 
 if __name__ == "__main__":
-    print(f"Starting TorkTool Local Agent on http://localhost:7777")
+    print(
+        f"Starting TorkTool Local Agent on http://{LOCAL_AGENT_HOST}:{LOCAL_AGENT_PORT} "
+        f"for {WEB_APP_URL}"
+    )
     threading.Thread(target=open_browser, daemon=True).start()
-    app.run(port=7777)
+    app.run(host=LOCAL_AGENT_HOST, port=LOCAL_AGENT_PORT)
