@@ -6,7 +6,7 @@ a = Analysis(
     pathex=[],
     binaries=[],
     datas=[
-        ('template.html', '.'),
+        ('index.html', '.'),
         ('assets', 'assets'),
         ('translations', 'translations'),
         ('img', 'img'),

@@ -834,21 +834,36 @@ body {
   justify-content: center;
 }
 
+.global-drop-overlay.active {
+  display: flex;
+}
+
 .overlay-content {
+  width: min(100% - 32px, 360px);
+  padding: 28px 24px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(15, 23, 42, 0.92);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28);
   text-align: center;
 }
 
+.overlay-content h2,
+.overlay-content p {
+  overflow-wrap: anywhere;
+}
+
 .icon-circle {
-  width: 120px;
-  height: 120px;
+  width: 72px;
+  height: 72px;
   background: white;
   color: var(--primary);
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 48px;
-  margin: 0 auto 24px;
+  font-size: 28px;
+  margin: 0 auto 16px;
 }
 
 /* Animations */
@@ -954,6 +969,22 @@ body {
     overflow: visible;
   }
 
+  .tab-content,
+  .tool-card,
+  .pdf-actions,
+  .modal-content,
+  .status-bar,
+  .input-wrapper,
+  .input-with-icon,
+  .toggle-selector,
+  .file-card,
+  .media-card,
+  .selection-info,
+  .transcriber-actions,
+  .history-header h3 {
+    min-width: 0;
+  }
+
   .content-header {
     margin-bottom: 24px;
   }
@@ -962,10 +993,28 @@ body {
     font-size: 28px;
   }
 
+  .content-header h2,
+  .content-header p,
+  .selection-info span,
+  .option-content span,
+  .status-bar span,
+  .btn-primary span,
+  .btn-outline span,
+  .nav-btn span,
+  .modal-footer a,
+  .modal-footer button,
+  .upload-text h3,
+  .upload-text p,
+  .text-output-area,
+  .empty-state p {
+    overflow-wrap: anywhere;
+  }
+
   .tool-card {
     padding: 20px;
     margin-bottom: 24px;
     border-radius: 18px;
+    overflow: hidden;
   }
 
   .input-wrapper,
@@ -986,12 +1035,21 @@ body {
     width: 100%;
   }
 
+  .input-wrapper > *,
+  .media-card > *,
+  .pdf-actions > *,
+  .history-header > *,
+  .modal-footer > * {
+    min-width: 0;
+  }
+
   .btn-primary,
   .btn-outline,
   .media-card .btn-primary,
   .pdf-actions .btn-primary {
     width: 100%;
     justify-content: center;
+    white-space: normal;
   }
 
   .format-options,
@@ -1070,6 +1128,11 @@ body {
     padding: 10px 12px;
   }
 
+  .btn-setup {
+    width: 100%;
+    text-align: center;
+  }
+
   .main-content {
     padding: 20px 12px 28px;
   }
@@ -1109,6 +1172,11 @@ body {
 
   .image-grid-modern {
     grid-template-columns: 1fr;
+  }
+
+  .overlay-content {
+    width: min(100% - 24px, 320px);
+    padding: 24px 18px;
   }
 }
 
