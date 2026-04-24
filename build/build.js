@@ -33,6 +33,7 @@ function build() {
   fs.writeFileSync(path.join(output, "CNAME"), "torktool.roftcore.work");
   copyRecursive(path.join(root, 'assets'), path.join(output, 'assets'));
   copyRecursive(path.join(root, 'img'), path.join(output, 'img'));
+  copyRecursive(path.join(root, 'translations'), path.join(output, 'translations'));
   fs.copyFileSync(path.join(root, 'main.py'), path.join(output, 'main.py'));
   fs.copyFileSync(path.join(root, 'requirements.txt'), path.join(output, 'requirements.txt'));
 
@@ -62,7 +63,6 @@ function build() {
     const flat = flattenDictionary(dictionary);
     return source
       .replace(/<html lang="[^"]*">/, `<html lang="${language}">`)
-      .replace(/^\s*<script src="assets\/js\/i18n-loader\.js"><\/script>\s*$/gm, '')
       .replace(/\{\{([\w.-]+)\}\}/g, (_, key) => {
         const normalizedKey = flat[key] !== undefined ? key : normalizeTemplateKey(key);
         return flat[normalizedKey] !== undefined ? String(flat[normalizedKey]) : `{{${key}}}`;

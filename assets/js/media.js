@@ -11,6 +11,44 @@
     return;
   }
 
+  function normalizeText(value, fallback = '') {
+    if (value === null || value === undefined) {
+      return fallback;
+    }
+    if (typeof value === 'string' || typeof value === 'number') {
+      return String(value);
+    }
+    if (typeof value === 'object') {
+      return String(value.name || value.display_name || value.title || fallback);
+    }
+    return fallback;
+  }
+
+  async function fetchMediaFiles() {
+    const response = await apiFetch('/api/files');
+    return response.json();
+  }
+
+  async function waitForNewDownload(previousFiles, timeoutMs = 180000) {
+    const startedAt = Date.now();
+    const previousNames = new Set((previousFiles || []).map((file) => file.name));
+
+    while (Date.now() - startedAt < timeoutMs) {
+      await new Promise((resolve) => setTimeout(resolve, 2500));
+      const data = await fetchMediaFiles();
+      if (!data.success) {
+        continue;
+      }
+
+      const newFile = (data.files || []).find((file) => !previousNames.has(file.name));
+      if (newFile) {
+        return newFile;
+      }
+    }
+
+    throw new Error(t('media.download_timeout'));
+  }
+
   function detectMediaType(url) {
     if (url.includes('spotify.com')) {
       if (url.includes('/playlist/')) return 'spotify-playlist';
@@ -66,8 +104,8 @@
     }
 
     renderMediaCard({
-      title: data.name,
-      author: data.owner,
+      title: normalizeText(data.name, t('media.spotify_playlist')),
+      author: normalizeText(data.owner, 'Spotify'),
       count: tc('media.songs_one', 'media.songs_other', data.total_tracks),
       image: data.image || 'img/torken.png',
       badge: type === 'spotify-track' ? t('media.spotify_track') : t('media.spotify_playlist'),
@@ -120,6 +158,8 @@
     showGlobalProgress(t('media.spotify_start'), 5);
 
     try {
+      const previousFilesData = await fetchMediaFiles();
+      const previousFiles = previousFilesData.success ? previousFilesData.files : [];
       const response = await apiFetch('/api/playlist/download', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -140,12 +180,11 @@
         }
       }, 500);
 
-      setTimeout(() => {
-        clearInterval(interval);
-        hideGlobalProgress();
-        window.refreshMediaFiles?.();
-        alert(t('media.download_started'));
-      }, 3000);
+      await waitForNewDownload(previousFiles);
+      clearInterval(interval);
+      showGlobalProgress(t('media.ready_to_download'), 100);
+      await window.refreshMediaFiles?.();
+      setTimeout(() => hideGlobalProgress(), 1200);
     } catch (error) {
       alert(`${t('common.error')}: ${error.message}`);
       hideGlobalProgress();
@@ -189,8 +228,7 @@
 
   async function refreshMediaFiles() {
     try {
-      const response = await apiFetch('/api/files');
-      const data = await response.json();
+      const data = await fetchMediaFiles();
 
       if (data.success && data.files.length > 0) {
         mediaFilesList.innerHTML = data.files.map((file) => `

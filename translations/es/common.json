@@ -41,6 +41,7 @@
     "files_one": "{{count}} archivo",
     "files_other": "{{count}} archivos",
     "download_started": "¡Descarga iniciada! Revisa la sección de \"Descargas Recientes\" en unos segundos.",
+    "download_timeout": "La descarga no terminó a tiempo. Revisa la ventana del agente y las descargas recientes.",
     "spotify_start": "Iniciando descarga de Spotify...",
     "spotify_unpacking": "Descargando y empaquetando...",
     "youtube_processing": "Procesando YouTube...",

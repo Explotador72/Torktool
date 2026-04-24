@@ -194,6 +194,14 @@ class SpotifyDownloader:
         return text.translate(str.maketrans('\\/.:*?"<>|', "__________")).strip()
 
     @staticmethod
+    def normalize_owner(owner):
+        if isinstance(owner, dict):
+            return owner.get("name") or owner.get("display_name") or owner.get("id") or "Unknown"
+        if owner is None:
+            return "Unknown"
+        return str(owner)
+
+    @staticmethod
     def _extract_playlist_id(url):
         path = urlparse(url).path.strip("/")
         parts = path.split("/")
@@ -407,7 +415,7 @@ def playlist_info():
             "success": True,
             "kind": "playlist",
             "name": info["name"],
-            "owner": info.get("owner", "Unknown"),
+            "owner": downloader.normalize_owner(info.get("owner", "Unknown")),
             "total_tracks": len(info.get("tracks", [])),
             "tracks": downloader._normalize_playlist_tracks(info)[:10],
             "image": info.get("images", [{}])[0].get("url"),

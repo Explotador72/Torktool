@@ -41,6 +41,7 @@
     "files_one": "{{count}} file",
     "files_other": "{{count}} files",
     "download_started": "Download started! Check \"Recent Downloads\" in a few seconds.",
+    "download_timeout": "The download did not finish in time. Check the agent window and Recent Downloads.",
     "spotify_start": "Starting Spotify download...",
     "spotify_unpacking": "Downloading and packaging...",
     "youtube_processing": "Processing YouTube...",
