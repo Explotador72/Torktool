@@ -69,11 +69,15 @@ jobs:
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pyinstaller
+          python -m pip install setuptools wheel
+          python -m pip install -r requirements.txt
+
+      - name: Verify Spotify dependency
+        run: |
+          python -c "import spotify_scraper; print(spotify_scraper.__file__)"
 
       - name: Build exe
-        run: pyinstaller TorkTool.spec
+        run: python -m PyInstaller TorkTool.spec
 
       - name: Create Release
         uses: softprops/action-gh-release@v1

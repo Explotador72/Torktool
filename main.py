@@ -69,8 +69,12 @@ if IS_WINDOWS:
     WM_DESTROY = 0x0002
     WM_COMMAND = 0x0111
     WM_CLOSE = 0x0010
+    WM_LBUTTONDOWN = 0x0201
+    WM_NCLBUTTONDOWN = 0x00A1
     WS_OVERLAPPED = 0x00000000
     WS_CAPTION = 0x00C00000
+    WS_POPUP = 0x80000000
+    WS_BORDER = 0x00800000
     WS_SYSMENU = 0x00080000
     WS_MINIMIZEBOX = 0x00020000
     WS_VISIBLE = 0x10000000
@@ -80,9 +84,13 @@ if IS_WINDOWS:
     SS_LEFT = 0x00000000
     CW_USEDEFAULT = 0x80000000
     SW_SHOW = 5
+    SW_MINIMIZE = 6
     IDC_ARROW = 32512
     COLOR_WINDOW = 5
     BUTTON_OPEN_ID = 1001
+    BUTTON_MINIMIZE_ID = 1002
+    BUTTON_CLOSE_ID = 1003
+    HTCAPTION = 2
 else:
     user32 = None
     kernel32 = None
@@ -511,16 +519,27 @@ class LocalAgentServer:
 if IS_WINDOWS:
     from ctypes import wintypes
 
+    HICON = wintypes.HANDLE
+    HCURSOR = wintypes.HANDLE
+    HBRUSH = wintypes.HANDLE
+    WNDPROC = ctypes.WINFUNCTYPE(
+        ctypes.c_long,
+        wintypes.HWND,
+        wintypes.UINT,
+        wintypes.WPARAM,
+        wintypes.LPARAM,
+    )
+
     class WNDCLASS(ctypes.Structure):
         _fields_ = [
             ("style", wintypes.UINT),
-            ("lpfnWndProc", ctypes.WINFUNCTYPE(ctypes.c_long, wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM)),
+            ("lpfnWndProc", WNDPROC),
             ("cbClsExtra", ctypes.c_int),
             ("cbWndExtra", ctypes.c_int),
             ("hInstance", wintypes.HINSTANCE),
-            ("hIcon", wintypes.HICON),
-            ("hCursor", wintypes.HCURSOR),
-            ("hbrBackground", wintypes.HBRUSH),
+            ("hIcon", HICON),
+            ("hCursor", HCURSOR),
+            ("hbrBackground", HBRUSH),
             ("lpszMenuName", wintypes.LPCWSTR),
             ("lpszClassName", wintypes.LPCWSTR),
         ]
@@ -539,18 +558,16 @@ if IS_WINDOWS:
 
 
     class AgentWindow:
+        TITLEBAR_HEIGHT = 38
+        WINDOW_WIDTH = 360
+        WINDOW_HEIGHT = 210
+
         def __init__(self, server):
             self.server = server
             self.h_instance = kernel32.GetModuleHandleW(None)
             self.class_name = "TorkToolAgentWindow"
             self.window_title = "TorkTool Agent"
-            self._wnd_proc = ctypes.WINFUNCTYPE(
-                ctypes.c_long,
-                wintypes.HWND,
-                wintypes.UINT,
-                wintypes.WPARAM,
-                wintypes.LPARAM,
-            )(self._window_proc)
+            self._wnd_proc = WNDPROC(self._window_proc)
             self._register_class()
             self.hwnd = None
 
@@ -564,23 +581,145 @@ if IS_WINDOWS:
             user32.RegisterClassW(ctypes.byref(wc))
 
         def _create_controls(self):
-            user32.CreateWindowExW(0, "STATIC", "TorkTool Agent activo", WS_CHILD | WS_VISIBLE | SS_LEFT, 20, 20, 260, 22, self.hwnd, None, self.h_instance, None)
-            user32.CreateWindowExW(0, "STATIC", f"Backend local: http://{LOCAL_AGENT_HOST}:{LOCAL_AGENT_PORT}", WS_CHILD | WS_VISIBLE | SS_LEFT, 20, 50, 300, 22, self.hwnd, None, self.h_instance, None)
-            user32.CreateWindowExW(0, "STATIC", "Cierra esta ventana para detener el agente.", WS_CHILD | WS_VISIBLE | SS_LEFT, 20, 80, 300, 22, self.hwnd, None, self.h_instance, None)
-            user32.CreateWindowExW(0, "BUTTON", "Abrir web", WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON, 20, 118, 110, 30, self.hwnd, ctypes.c_void_p(BUTTON_OPEN_ID), self.h_instance, None)
+            title_y = 10
+            body_top = self.TITLEBAR_HEIGHT + 18
+            button_top = 4
+            button_width = 32
+
+            user32.CreateWindowExW(
+                0,
+                "STATIC",
+                self.window_title,
+                WS_CHILD | WS_VISIBLE | SS_LEFT,
+                14,
+                title_y,
+                180,
+                18,
+                self.hwnd,
+                None,
+                self.h_instance,
+                None,
+            )
+            user32.CreateWindowExW(
+                0,
+                "BUTTON",
+                "_",
+                WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
+                self.WINDOW_WIDTH - 86,
+                button_top,
+                button_width,
+                28,
+                self.hwnd,
+                ctypes.c_void_p(BUTTON_MINIMIZE_ID),
+                self.h_instance,
+                None,
+            )
+            user32.CreateWindowExW(
+                0,
+                "BUTTON",
+                "X",
+                WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
+                self.WINDOW_WIDTH - 46,
+                button_top,
+                button_width,
+                28,
+                self.hwnd,
+                ctypes.c_void_p(BUTTON_CLOSE_ID),
+                self.h_instance,
+                None,
+            )
+            user32.CreateWindowExW(
+                0,
+                "STATIC",
+                "TorkTool Agent activo",
+                WS_CHILD | WS_VISIBLE | SS_LEFT,
+                20,
+                body_top,
+                260,
+                22,
+                self.hwnd,
+                None,
+                self.h_instance,
+                None,
+            )
+            user32.CreateWindowExW(
+                0,
+                "STATIC",
+                f"Backend local: http://{LOCAL_AGENT_HOST}:{LOCAL_AGENT_PORT}",
+                WS_CHILD | WS_VISIBLE | SS_LEFT,
+                20,
+                body_top + 30,
+                300,
+                22,
+                self.hwnd,
+                None,
+                self.h_instance,
+                None,
+            )
+            user32.CreateWindowExW(
+                0,
+                "STATIC",
+                "Cierra esta ventana para detener el agente.",
+                WS_CHILD | WS_VISIBLE | SS_LEFT,
+                20,
+                body_top + 60,
+                300,
+                22,
+                self.hwnd,
+                None,
+                self.h_instance,
+                None,
+            )
+            user32.CreateWindowExW(
+                0,
+                "BUTTON",
+                "Abrir web",
+                WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
+                20,
+                body_top + 98,
+                110,
+                30,
+                self.hwnd,
+                ctypes.c_void_p(BUTTON_OPEN_ID),
+                self.h_instance,
+                None,
+            )
+
+        @staticmethod
+        def _get_mouse_pos(lparam):
+            x = ctypes.c_short(lparam & 0xFFFF).value
+            y = ctypes.c_short((lparam >> 16) & 0xFFFF).value
+            return x, y
 
         def _window_proc(self, hwnd, msg, wparam, lparam):
-            if msg == WM_COMMAND and (wparam & 0xFFFF) == BUTTON_OPEN_ID:
-                webbrowser.open(WEB_APP_URL)
-                return 0
-            if msg in (WM_CLOSE, WM_DESTROY):
+            if msg == WM_COMMAND:
+                button_id = wparam & 0xFFFF
+                if button_id == BUTTON_OPEN_ID:
+                    webbrowser.open(WEB_APP_URL)
+                    return 0
+                if button_id == BUTTON_MINIMIZE_ID:
+                    user32.ShowWindow(hwnd, SW_MINIMIZE)
+                    return 0
+                if button_id == BUTTON_CLOSE_ID:
+                    user32.SendMessageW(hwnd, WM_CLOSE, 0, 0)
+                    return 0
+            if msg == WM_LBUTTONDOWN:
+                _, y = self._get_mouse_pos(lparam)
+                if y <= self.TITLEBAR_HEIGHT:
+                    user32.ReleaseCapture()
+                    user32.SendMessageW(hwnd, WM_NCLBUTTONDOWN, HTCAPTION, 0)
+                    return 0
+            if msg == WM_CLOSE:
                 self.server.stop()
+                user32.DestroyWindow(hwnd)
+                return 0
+            if msg == WM_DESTROY:
                 user32.PostQuitMessage(0)
                 return 0
             return user32.DefWindowProcW(hwnd, msg, wparam, lparam)
 
         def run(self):
-            style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_VISIBLE
+            style = WS_POPUP | WS_BORDER | WS_SYSMENU | WS_MINIMIZEBOX | WS_VISIBLE
             self.hwnd = user32.CreateWindowExW(
                 0,
                 self.class_name,
@@ -588,8 +727,8 @@ if IS_WINDOWS:
                 style,
                 CW_USEDEFAULT,
                 CW_USEDEFAULT,
-                360,
-                210,
+                self.WINDOW_WIDTH,
+                self.WINDOW_HEIGHT,
                 None,
                 None,
                 self.h_instance,
@@ -612,7 +751,6 @@ def main():
     )
     server = LocalAgentServer(app)
     server.start()
-    threading.Thread(target=open_browser, daemon=True).start()
 
     if IS_WINDOWS:
         AgentWindow(server).run()
