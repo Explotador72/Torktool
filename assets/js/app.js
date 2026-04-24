@@ -1,10 +1,19 @@
 (function () {
   const t = (key, params) => window.i18n?.t(key, params) ?? key;
   const ACTIVE_TAB_KEY = 'torktool.activeTab';
-  const DEFAULT_LOCAL_AGENT_URL = 'http://127.0.0.1:7777';
+  const DEFAULT_LOCAL_AGENT_URL = 'http://localhost:7777';
 
   function getApiUrl() {
     return window.API_URL;
+  }
+
+  function isLocalAgentUrl(url) {
+    try {
+      const parsed = new URL(url, window.location.href);
+      return ['localhost', '127.0.0.1', '::1'].includes(parsed.hostname);
+    } catch (error) {
+      return false;
+    }
   }
 
   function resolveApiUrl() {
@@ -23,6 +32,22 @@
       window.location.port === '7777';
 
     return isLocalAgentOrigin ? window.location.origin : DEFAULT_LOCAL_AGENT_URL;
+  }
+
+  function apiFetch(path, options = {}) {
+    const baseUrl = getApiUrl();
+    const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+    const requestUrl = `${baseUrl}${normalizedPath}`;
+    const nextOptions = {
+      mode: 'cors',
+      ...options,
+    };
+
+    if (isLocalAgentUrl(baseUrl)) {
+      nextOptions.targetAddressSpace = 'local';
+    }
+
+    return fetch(requestUrl, nextOptions);
   }
 
   function readCookie(name) {
@@ -180,7 +205,7 @@
     }
 
     try {
-      const response = await fetch(`${getApiUrl()}/api/status`);
+      const response = await apiFetch('/api/status');
       if (!response.ok) {
         throw new Error('Offline');
       }
@@ -255,6 +280,7 @@
 
   window.API_URL = resolveApiUrl();
   window.getApiUrl = getApiUrl;
+  window.apiFetch = apiFetch;
   window.showGlobalProgress = showGlobalProgress;
   window.hideGlobalProgress = hideGlobalProgress;
   window.showAgentModal = showAgentModal;

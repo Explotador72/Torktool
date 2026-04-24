@@ -50,7 +50,7 @@
   }
 
   async function handleSpotify(url) {
-    const response = await fetch(`${getApiUrl()}/api/playlist/info`, {
+    const response = await apiFetch('/api/playlist/info', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url }),
@@ -116,7 +116,7 @@
     showGlobalProgress(t('media.spotify_start'), 5);
 
     try {
-      const response = await fetch(`${getApiUrl()}/api/playlist/download`, {
+      const response = await apiFetch('/api/playlist/download', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url }),
@@ -153,7 +153,7 @@
     showGlobalProgress(t('media.youtube_processing'), 20);
 
     try {
-      const response = await fetch(`${getApiUrl()}/api/url`, {
+      const response = await apiFetch('/api/url', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -185,7 +185,7 @@
 
   async function refreshMediaFiles() {
     try {
-      const response = await fetch(`${getApiUrl()}/api/files`);
+      const response = await apiFetch('/api/files');
       const data = await response.json();
 
       if (data.success && data.files.length > 0) {
