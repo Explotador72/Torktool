@@ -30,7 +30,7 @@ function ensureCleanDir(directory) {
 
 function build() {
   ensureCleanDir(output);
-
+  fs.writeFileSync(path.join(output, "CNAME"), "torktool.roftcore.work");
   copyRecursive(path.join(root, 'assets'), path.join(output, 'assets'));
   copyRecursive(path.join(root, 'img'), path.join(output, 'img'));
   fs.copyFileSync(path.join(root, 'main.py'), path.join(output, 'main.py'));
