@@ -75,8 +75,9 @@ jobs:
       - name: Build exe
         run: pyinstaller TorkTool.spec
 
-      - name: Upload exe artifact
-        uses: actions/upload-artifact@v4
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
         with:
-          name: exe
-          path: dist/TorkTool.exe
+          files: dist/TorkTool.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
