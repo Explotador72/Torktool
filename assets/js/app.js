@@ -44,7 +44,7 @@
     };
 
     if (isLocalAgentUrl(baseUrl)) {
-      nextOptions.targetAddressSpace = 'local';
+      nextOptions.targetAddressSpace = 'loopback';
     }
 
     return fetch(requestUrl, nextOptions);
