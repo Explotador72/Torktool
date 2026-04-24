@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 
 const root = path.resolve(__dirname, '..');
-const output = path.join(root, 'build', 'dist','production');
+const output = path.join(root, 'dist');
 const languages = ['es', 'en'];
 
 function copyRecursive(source, destination) {
