@@ -10,6 +10,7 @@ import subprocess
 import sys
 import threading
 import time
+import uuid
 import zipfile
 import webbrowser
 from concurrent.futures import ThreadPoolExecutor
@@ -59,6 +60,9 @@ ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
 ]
+
+DOWNLOAD_JOBS = {}
+DOWNLOAD_JOBS_LOCK = threading.Lock()
 
 IS_WINDOWS = sys.platform.startswith("win")
 
@@ -167,6 +171,52 @@ def resolve_production_static(path):
     if production_path.exists():
         return production_dir, path
     return BASE_DIR, path
+
+
+def create_download_job(kind, title="", total_items=0):
+    job_id = uuid.uuid4().hex
+    with DOWNLOAD_JOBS_LOCK:
+        DOWNLOAD_JOBS[job_id] = {
+            "id": job_id,
+            "kind": kind,
+            "title": title,
+            "status": "queued",
+            "total_items": total_items,
+            "completed_items": 0,
+            "failed_items": 0,
+            "filename": None,
+            "error": None,
+            "updated_at": time.time(),
+        }
+    return job_id
+
+
+def update_download_job(job_id, **updates):
+    with DOWNLOAD_JOBS_LOCK:
+        job = DOWNLOAD_JOBS.get(job_id)
+        if not job:
+            return None
+        job.update(updates)
+        job["updated_at"] = time.time()
+        return dict(job)
+
+
+def increment_download_job(job_id, *, completed_delta=0, failed_delta=0, **updates):
+    with DOWNLOAD_JOBS_LOCK:
+        job = DOWNLOAD_JOBS.get(job_id)
+        if not job:
+            return None
+        job["completed_items"] = max(0, job.get("completed_items", 0) + completed_delta)
+        job["failed_items"] = max(0, job.get("failed_items", 0) + failed_delta)
+        job.update(updates)
+        job["updated_at"] = time.time()
+        return dict(job)
+
+
+def get_download_job(job_id):
+    with DOWNLOAD_JOBS_LOCK:
+        job = DOWNLOAD_JOBS.get(job_id)
+        return dict(job) if job else None
 
 class SystemSetup:
     @staticmethod
