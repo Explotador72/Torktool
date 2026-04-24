@@ -27,6 +27,7 @@
   }
 
   function renderMediaCard(info) {
+    const actionLabel = info.downloadSupported === false ? t('media.spotify_playlist_unavailable') : t('media.download_now');
     mediaResult.innerHTML = `
       <div class="media-card">
         <img src="${info.image}" class="media-cover" alt="${info.title}">
@@ -37,19 +38,21 @@
             <span><i class="fas fa-user"></i> ${info.author}</span>
             <span><i class="fas fa-music"></i> ${info.count}</span>
           </div>
-          <button class="btn-primary" id="startDownloadBtn" type="button">
+          <button class="btn-primary" id="startDownloadBtn" type="button" ${info.downloadSupported === false ? 'disabled' : ''}>
             <i class="fas fa-download"></i>
-            <span>${t('media.download_now')}</span>
+            <span>${actionLabel}</span>
           </button>
         </div>
       </div>
     `;
 
     const startDownloadBtn = document.getElementById('startDownloadBtn');
-    startDownloadBtn?.addEventListener('click', info.onDownload);
+    if (info.downloadSupported !== false) {
+      startDownloadBtn?.addEventListener('click', info.onDownload);
+    }
   }
 
-  async function handleSpotify(url) {
+  async function handleSpotify(url, type) {
     const response = await apiFetch('/api/playlist/info', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -67,7 +70,8 @@
       author: data.owner,
       count: tc('media.songs_one', 'media.songs_other', data.total_tracks),
       image: data.image || 'img/torken.png',
-      badge: t('media.spotify_playlist'),
+      badge: type === 'spotify-track' ? t('media.spotify_track') : t('media.spotify_playlist'),
+      downloadSupported: data.download_supported !== false,
       onDownload: () => startSpotifyDownload(url),
     });
   }
@@ -101,7 +105,7 @@
 
     try {
       if (type.startsWith('spotify')) {
-        await handleSpotify(url);
+        await handleSpotify(url, type);
       } else {
         await handleYouTube(url);
       }

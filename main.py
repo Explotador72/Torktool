@@ -1,4 +1,5 @@
 import asyncio
+import ctypes
 import json
 import logging
 import os
@@ -18,6 +19,7 @@ from urllib.request import Request, urlopen
 
 from flask import Flask, request, jsonify, send_from_directory, make_response
 from flask_cors import CORS
+from werkzeug.serving import make_server
 from yt_dlp import YoutubeDL
 
 # Bundle support
@@ -40,7 +42,7 @@ except ImportError:
     SpotifyClient = None
     PlaylistExtractor = None
     logger = logging.getLogger(__name__)
-    logger.error("spotify_scraper not found. Spotify functionality will be limited.")
+    logger.error("spotify_scraper not found. Spotify playlist support will be unavailable in this build.")
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -57,6 +59,33 @@ ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
 ]
+
+IS_WINDOWS = sys.platform.startswith("win")
+
+if IS_WINDOWS:
+    user32 = ctypes.windll.user32
+    kernel32 = ctypes.windll.kernel32
+
+    WM_DESTROY = 0x0002
+    WM_COMMAND = 0x0111
+    WM_CLOSE = 0x0010
+    WS_OVERLAPPED = 0x00000000
+    WS_CAPTION = 0x00C00000
+    WS_SYSMENU = 0x00080000
+    WS_MINIMIZEBOX = 0x00020000
+    WS_VISIBLE = 0x10000000
+    WS_CHILD = 0x40000000
+    WS_TABSTOP = 0x00010000
+    BS_PUSHBUTTON = 0x00000000
+    SS_LEFT = 0x00000000
+    CW_USEDEFAULT = 0x80000000
+    SW_SHOW = 5
+    IDC_ARROW = 32512
+    COLOR_WINDOW = 5
+    BUTTON_OPEN_ID = 1001
+else:
+    user32 = None
+    kernel32 = None
 
 app = Flask(__name__)
 CORS(app, resources={r"/api/*": {"origins": ALLOWED_ORIGINS}})
@@ -194,6 +223,87 @@ class SpotifyDownloader:
             pass
         return None
 
+    @staticmethod
+    def detect_spotify_type(url):
+        path = urlparse(url).path.lower()
+        if "/track/" in path:
+            return "track"
+        if "/playlist/" in path:
+            return "playlist"
+        return "unknown"
+
+    def fetch_spotify_oembed(self, url):
+        endpoint = f"https://open.spotify.com/oembed?url={url}"
+        request_obj = Request(
+            endpoint,
+            headers={
+                "User-Agent": "Mozilla/5.0",
+                "Accept": "application/json",
+            },
+        )
+        with urlopen(request_obj, timeout=YTDL_TIMEOUT) as response:
+            return json.loads(response.read().decode("utf-8"))
+
+    @staticmethod
+    def parse_track_title(raw_title, author_name="Spotify"):
+        title = (raw_title or "").strip()
+        author = (author_name or "Spotify").strip() or "Spotify"
+        if " - " in title:
+            artist, track = title.split(" - ", 1)
+            return {
+                "name": track.strip() or title,
+                "artist": artist.strip() or author,
+            }
+        return {
+            "name": title or "Spotify Track",
+            "artist": author,
+        }
+
+    def get_spotify_track_info(self, url):
+        embed = self.fetch_spotify_oembed(url)
+        parsed = self.parse_track_title(embed.get("title"), embed.get("author_name"))
+        return {
+            "success": True,
+            "kind": "track",
+            "name": parsed["name"],
+            "owner": parsed["artist"],
+            "total_tracks": 1,
+            "tracks": [{
+                "name": parsed["name"],
+                "artists": [{"name": parsed["artist"]}],
+                "duration_ms": 0,
+            }],
+            "image": embed.get("thumbnail_url"),
+            "download_supported": True,
+        }
+
+    def queue_spotify_track_download(self, url, type_="mp3"):
+        track_info = self.get_spotify_track_info(url)
+        track = track_info["tracks"][0]
+        track_name = track["name"]
+        artist_name = track["artists"][0]["name"]
+        safe_base_name = self.clean_name(f"{artist_name} - {track_name}")
+        download_url = self._find_youtube(track_name, artist_name, 0)
+        if not download_url:
+            return False, "No se pudo encontrar una fuente en YouTube para esta pista."
+
+        def run_track_download():
+            folder = DOWNLOADS_DIR / f"temp_spotify_{int(time.time() * 1000)}"
+            folder.mkdir(exist_ok=True)
+            try:
+                downloaded_file = self._download(download_url, folder, safe_base_name, type_)
+                if not downloaded_file:
+                    logger.error("Spotify track download failed for %s", url)
+                    return
+                zip_path = DOWNLOADS_DIR / f"{safe_base_name}.zip"
+                with zipfile.ZipFile(zip_path, "w") as archive:
+                    archive.write(downloaded_file, downloaded_file.name)
+            finally:
+                shutil.rmtree(folder, ignore_errors=True)
+
+        threading.Thread(target=run_track_download, daemon=True).start()
+        return True, f"{safe_base_name}.zip"
+
     def _download(self, url, path, filename, type_="mp3"):
         ext = "mp4" if type_ == "mp4" else "mp3"
         options = {
@@ -273,17 +383,27 @@ def status():
 def playlist_info():
     data = request.json
     url = data.get("url")
-    if not url or not downloader.sp:
-        return jsonify({"success": False, "error": "Invalid URL or Spotify not available"})
+    spotify_type = downloader.detect_spotify_type(url or "")
+    if not url or spotify_type == "unknown":
+        return jsonify({"success": False, "error": "Invalid Spotify URL"})
+    if spotify_type == "track":
+        try:
+            return jsonify(downloader.get_spotify_track_info(url))
+        except Exception as e:
+            return jsonify({"success": False, "error": str(e)})
+    if not downloader.sp:
+        return jsonify({"success": False, "error": "Spotify playlist support is missing from this build"})
     try:
         info = downloader.sp.get_playlist_info(url)
         return jsonify({
             "success": True,
+            "kind": "playlist",
             "name": info["name"],
             "owner": info.get("owner", "Unknown"),
             "total_tracks": len(info.get("tracks", [])),
             "tracks": downloader._normalize_playlist_tracks(info)[:10],
-            "image": info.get("images", [{}])[0].get("url")
+            "image": info.get("images", [{}])[0].get("url"),
+            "download_supported": True,
         })
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
@@ -292,6 +412,16 @@ def playlist_info():
 def playlist_download():
     data = request.json
     url = data.get("url")
+    spotify_type = downloader.detect_spotify_type(url or "")
+    if not url or spotify_type == "unknown":
+        return jsonify({"success": False, "error": "Invalid Spotify URL"})
+    if spotify_type == "track":
+        success, result = downloader.queue_spotify_track_download(url)
+        if not success:
+            return jsonify({"success": False, "error": result})
+        return jsonify({"success": True, "message": "Track download started in background."})
+    if not downloader.sp:
+        return jsonify({"success": False, "error": "Spotify playlist support is missing from this build"})
     
     def run_download():
         filename, error = asyncio.run(downloader.download_playlist(url))
@@ -356,10 +486,145 @@ def open_browser():
     time.sleep(1.5)
     webbrowser.open(WEB_APP_URL)
 
-if __name__ == "__main__":
-    print(
-        f"Starting TorkTool Local Agent on http://{LOCAL_AGENT_HOST}:{LOCAL_AGENT_PORT} "
-        f"for {WEB_APP_URL}"
+class LocalAgentServer:
+    def __init__(self, flask_app):
+        self.flask_app = flask_app
+        self.server = None
+        self.thread = None
+
+    def start(self):
+        if self.thread and self.thread.is_alive():
+            return
+        self.server = make_server(LOCAL_AGENT_HOST, LOCAL_AGENT_PORT, self.flask_app, threaded=True)
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+
+    def stop(self):
+        if self.server:
+            self.server.shutdown()
+            self.server.server_close()
+            self.server = None
+        if self.thread and self.thread.is_alive():
+            self.thread.join(timeout=2)
+
+
+if IS_WINDOWS:
+    from ctypes import wintypes
+
+    class WNDCLASS(ctypes.Structure):
+        _fields_ = [
+            ("style", wintypes.UINT),
+            ("lpfnWndProc", ctypes.WINFUNCTYPE(ctypes.c_long, wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM)),
+            ("cbClsExtra", ctypes.c_int),
+            ("cbWndExtra", ctypes.c_int),
+            ("hInstance", wintypes.HINSTANCE),
+            ("hIcon", wintypes.HICON),
+            ("hCursor", wintypes.HCURSOR),
+            ("hbrBackground", wintypes.HBRUSH),
+            ("lpszMenuName", wintypes.LPCWSTR),
+            ("lpszClassName", wintypes.LPCWSTR),
+        ]
+
+
+    class MSG(ctypes.Structure):
+        _fields_ = [
+            ("hwnd", wintypes.HWND),
+            ("message", wintypes.UINT),
+            ("wParam", wintypes.WPARAM),
+            ("lParam", wintypes.LPARAM),
+            ("time", wintypes.DWORD),
+            ("pt_x", ctypes.c_long),
+            ("pt_y", ctypes.c_long),
+        ]
+
+
+    class AgentWindow:
+        def __init__(self, server):
+            self.server = server
+            self.h_instance = kernel32.GetModuleHandleW(None)
+            self.class_name = "TorkToolAgentWindow"
+            self.window_title = "TorkTool Agent"
+            self._wnd_proc = ctypes.WINFUNCTYPE(
+                ctypes.c_long,
+                wintypes.HWND,
+                wintypes.UINT,
+                wintypes.WPARAM,
+                wintypes.LPARAM,
+            )(self._window_proc)
+            self._register_class()
+            self.hwnd = None
+
+        def _register_class(self):
+            wc = WNDCLASS()
+            wc.lpfnWndProc = self._wnd_proc
+            wc.hInstance = self.h_instance
+            wc.lpszClassName = self.class_name
+            wc.hCursor = user32.LoadCursorW(None, IDC_ARROW)
+            wc.hbrBackground = ctypes.c_void_p(COLOR_WINDOW + 1)
+            user32.RegisterClassW(ctypes.byref(wc))
+
+        def _create_controls(self):
+            user32.CreateWindowExW(0, "STATIC", "TorkTool Agent activo", WS_CHILD | WS_VISIBLE | SS_LEFT, 20, 20, 260, 22, self.hwnd, None, self.h_instance, None)
+            user32.CreateWindowExW(0, "STATIC", f"Backend local: http://{LOCAL_AGENT_HOST}:{LOCAL_AGENT_PORT}", WS_CHILD | WS_VISIBLE | SS_LEFT, 20, 50, 300, 22, self.hwnd, None, self.h_instance, None)
+            user32.CreateWindowExW(0, "STATIC", "Cierra esta ventana para detener el agente.", WS_CHILD | WS_VISIBLE | SS_LEFT, 20, 80, 300, 22, self.hwnd, None, self.h_instance, None)
+            user32.CreateWindowExW(0, "BUTTON", "Abrir web", WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON, 20, 118, 110, 30, self.hwnd, ctypes.c_void_p(BUTTON_OPEN_ID), self.h_instance, None)
+
+        def _window_proc(self, hwnd, msg, wparam, lparam):
+            if msg == WM_COMMAND and (wparam & 0xFFFF) == BUTTON_OPEN_ID:
+                webbrowser.open(WEB_APP_URL)
+                return 0
+            if msg in (WM_CLOSE, WM_DESTROY):
+                self.server.stop()
+                user32.PostQuitMessage(0)
+                return 0
+            return user32.DefWindowProcW(hwnd, msg, wparam, lparam)
+
+        def run(self):
+            style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_VISIBLE
+            self.hwnd = user32.CreateWindowExW(
+                0,
+                self.class_name,
+                self.window_title,
+                style,
+                CW_USEDEFAULT,
+                CW_USEDEFAULT,
+                360,
+                210,
+                None,
+                None,
+                self.h_instance,
+                None,
+            )
+            self._create_controls()
+            user32.ShowWindow(self.hwnd, SW_SHOW)
+            msg = MSG()
+            while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) != 0:
+                user32.TranslateMessage(ctypes.byref(msg))
+                user32.DispatchMessageW(ctypes.byref(msg))
+
+
+def main():
+    logger.info(
+        "Starting TorkTool Local Agent on http://%s:%s for %s",
+        LOCAL_AGENT_HOST,
+        LOCAL_AGENT_PORT,
+        WEB_APP_URL,
     )
+    server = LocalAgentServer(app)
+    server.start()
     threading.Thread(target=open_browser, daemon=True).start()
-    app.run(host=LOCAL_AGENT_HOST, port=LOCAL_AGENT_PORT)
+
+    if IS_WINDOWS:
+        AgentWindow(server).run()
+    else:
+        try:
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            pass
+        finally:
+            server.stop()
+
+
+if __name__ == "__main__":
+    main()

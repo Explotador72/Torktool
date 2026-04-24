@@ -30,6 +30,8 @@
     "invalid_url": "Por favor ingresa un link válido.",
     "unsupported_url": "Link no reconocido. Soporta YouTube y Spotify.",
     "spotify_playlist": "Playlist de Spotify",
+    "spotify_track": "Pista de Spotify",
+    "spotify_playlist_unavailable": "Playlist no disponible",
     "youtube_video": "Video de YouTube",
     "youtube_media": "YouTube Media",
     "youtube_author": "YouTube Media",
