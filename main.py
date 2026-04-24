@@ -16,7 +16,7 @@ from pathlib import Path
 from urllib.parse import unquote, urlparse
 from urllib.request import Request, urlopen
 
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, make_response
 from flask_cors import CORS
 from yt_dlp import YoutubeDL
 
@@ -60,6 +60,55 @@ ALLOWED_ORIGINS = [
 
 app = Flask(__name__)
 CORS(app, resources={r"/api/*": {"origins": ALLOWED_ORIGINS}})
+
+
+def _is_allowed_origin(origin):
+    return bool(origin and origin in ALLOWED_ORIGINS)
+
+
+@app.before_request
+def handle_private_network_preflight():
+    if request.method != "OPTIONS" or not request.path.startswith("/api/"):
+        return None
+
+    origin = request.headers.get("Origin")
+    response = make_response("", 204)
+    if _is_allowed_origin(origin):
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Vary"] = "Origin"
+
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, DELETE, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = request.headers.get(
+        "Access-Control-Request-Headers",
+        "Content-Type, Authorization",
+    )
+
+    if request.headers.get("Access-Control-Request-Private-Network") == "true":
+        response.headers["Access-Control-Allow-Private-Network"] = "true"
+
+    return response
+
+
+@app.after_request
+def add_private_network_headers(response):
+    if not request.path.startswith("/api/"):
+        return response
+
+    origin = request.headers.get("Origin")
+    if _is_allowed_origin(origin):
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Vary"] = "Origin"
+
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, DELETE, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = request.headers.get(
+        "Access-Control-Request-Headers",
+        response.headers.get("Access-Control-Allow-Headers", "Content-Type, Authorization"),
+    )
+
+    if request.headers.get("Access-Control-Request-Private-Network") == "true":
+        response.headers["Access-Control-Allow-Private-Network"] = "true"
+
+    return response
 
 
 def resolve_frontend_entry():
