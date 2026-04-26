@@ -1,321 +1,144 @@
-(function () {
-  const t = (key, params) => window.i18n?.t(key, params) ?? key;
-  const ACTIVE_TAB_KEY = 'torktool.activeTab';
-  const DEFAULT_LOCAL_AGENT_URL = 'http://localhost:7777';
+/**
+ * Main Application Entry Point (ES Module)
+ */
+import { i18n, applyTranslations } from './i18n-loader.js';
+import { apiFetch, getApiUrl } from './utils.js';
+import { initMediaModule, refreshMediaFiles } from './media.js';
+import { initPdfModule } from './pdf.js';
+import { initTranscriberModule } from './transcriber.js';
 
-  function getApiUrl() {
-    return window.API_URL;
-  }
+const ACTIVE_TAB_KEY = 'torktool.activeTab';
 
-  function isLocalAgentUrl(url) {
-    try {
-      const parsed = new URL(url, window.location.href);
-      return ['localhost', '127.0.0.1', '::1'].includes(parsed.hostname);
-    } catch (error) {
-      return false;
-    }
-  }
-
-  function resolveApiUrl() {
-    try {
-      const params = new URLSearchParams(window.location.search);
-      const explicitApi = params.get('api');
-      if (explicitApi) {
-        return explicitApi.replace(/\/$/, '');
-      }
-    } catch (error) {
-      // Ignore malformed query strings and keep fallback resolution.
-    }
-
-    const isLocalAgentOrigin =
-      (window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost') &&
-      window.location.port === '7777';
-
-    return isLocalAgentOrigin ? window.location.origin : DEFAULT_LOCAL_AGENT_URL;
-  }
-
-  function apiFetch(path, options = {}) {
-    const baseUrl = getApiUrl();
-    const normalizedPath = path.startsWith('/') ? path : `/${path}`;
-    const requestUrl = `${baseUrl}${normalizedPath}`;
-    const nextOptions = {
-      mode: 'cors',
-      ...options,
-    };
-
-    if (isLocalAgentUrl(baseUrl)) {
-      nextOptions.targetAddressSpace = 'loopback';
-    }
-
-    return fetch(requestUrl, nextOptions);
-  }
-
-  function readCookie(name) {
-    const match = document.cookie.match(new RegExp(`(?:^|; )${name.replace(/([.*+?^${}()|[\]\\])/g, '\\$1')}=([^;]*)`));
-    return match ? decodeURIComponent(match[1]) : '';
-  }
-
-  function writeCookie(name, value) {
-    document.cookie = `${encodeURIComponent(name)}=${encodeURIComponent(value)}; path=/; max-age=31536000; samesite=lax`;
-  }
-
-  function getStoredTab() {
-    try {
-      return localStorage.getItem(ACTIVE_TAB_KEY) || readCookie(ACTIVE_TAB_KEY) || 'media';
-    } catch (error) {
-      return readCookie(ACTIVE_TAB_KEY) || 'media';
-    }
-  }
-
-  function setStoredTab(tab) {
-    try {
-      localStorage.setItem(ACTIVE_TAB_KEY, tab);
-    } catch (error) {
-      writeCookie(ACTIVE_TAB_KEY, tab);
-    }
-    writeCookie(ACTIVE_TAB_KEY, tab);
-  }
-
-  function activateTab(tabName) {
-    const navButtons = document.querySelectorAll('.nav-btn');
-    const sections = document.querySelectorAll('.tab-content');
-    const targetButton = document.querySelector(`.nav-btn[data-tab="${tabName}"]`);
-    const targetSection = document.getElementById(tabName);
-
-    navButtons.forEach((item) => item.classList.remove('active'));
-    sections.forEach((section) => section.classList.remove('active'));
-
-    if (targetButton) {
-      targetButton.classList.add('active');
-    }
-    if (targetSection) {
-      targetSection.classList.add('active');
-    }
-
-    setStoredTab(tabName);
-
-    if (tabName === 'media' && typeof window.refreshMediaFiles === 'function') {
-      window.refreshMediaFiles();
-    }
-  }
-
-  function showGlobalProgress(label, percent = 0) {
-    const globalProgress = document.getElementById('globalProgress');
-    const progressBar = document.getElementById('progressBar');
-    const progressPercent = document.getElementById('progressPercent');
-    const progressLabel = document.getElementById('progressLabel');
-
-    if (!globalProgress || !progressBar || !progressPercent || !progressLabel) {
-      return;
-    }
-
-    const nextPercent = Math.max(0, Math.min(100, percent));
-    globalProgress.style.display = 'block';
-    progressLabel.textContent = label;
-    progressBar.style.width = `${nextPercent}%`;
-    progressPercent.textContent = `${nextPercent}%`;
-  }
-
-  function hideGlobalProgress() {
-    const globalProgress = document.getElementById('globalProgress');
-    if (globalProgress) {
-      globalProgress.style.display = 'none';
-    }
-  }
-
-  function showAgentModal() {
-    const modal = document.getElementById('agentModal');
-    if (modal) {
-      modal.classList.add('active');
-    }
-  }
-
-  function hideAgentModal() {
-    const modal = document.getElementById('agentModal');
-    if (modal) {
-      modal.classList.remove('active');
-    }
-  }
-
-  function isFileDrag(event) {
-    const types = Array.from(event.dataTransfer?.types || []);
-    return types.includes('Files');
-  }
-
-  function bindGlobalFileDragOverlay() {
-    const dropOverlay = document.getElementById('dropOverlay');
-
-    if (!dropOverlay) {
-      return;
-    }
-
-    let dragDepth = 0;
-
-    const showOverlay = () => {
-      dropOverlay.classList.add('active');
-    };
-
-    const hideOverlay = () => {
-      dragDepth = 0;
-      dropOverlay.classList.remove('active');
-    };
-
-    document.addEventListener('dragenter', (event) => {
-      if (!isFileDrag(event)) {
-        return;
-      }
-
-      dragDepth += 1;
-      showOverlay();
-    });
-
-    document.addEventListener('dragover', (event) => {
-      if (!isFileDrag(event)) {
-        return;
-      }
-
-      event.preventDefault();
-      showOverlay();
-    });
-
-    document.addEventListener('dragleave', (event) => {
-      if (!isFileDrag(event)) {
-        return;
-      }
-
-      dragDepth = Math.max(0, dragDepth - 1);
-      if (dragDepth === 0) {
-        hideOverlay();
-      }
-    });
-
-    document.addEventListener('drop', hideOverlay);
-    document.addEventListener('dragend', hideOverlay);
-    window.addEventListener('blur', hideOverlay);
-  }
-
-  async function checkConnectivity() {
-    const statusDiv = document.getElementById('backendStatus');
-    const statusText = document.getElementById('statusText');
-    const modalStatus = document.getElementById('modalStatus');
-    const modalStatusText = document.getElementById('modalStatusText');
-
-    if (!statusDiv || !statusText || !modalStatus || !modalStatusText) {
-      return;
-    }
-
-    try {
-      const response = await apiFetch('/api/status');
-      if (!response.ok) {
-        throw new Error('Offline');
-      }
-
-      statusDiv.className = 'status-bar online';
-      statusText.textContent = t('status.online');
-      modalStatus.className = 'status-indicator online';
-      modalStatusText.textContent = t('status.modal_online');
-    } catch (error) {
-      statusDiv.className = 'status-bar offline';
-      statusText.textContent = t('status.offline');
-      modalStatus.className = 'status-indicator offline';
-      modalStatusText.textContent = t('status.modal_offline');
-    }
-  }
-
-  function bindNavigation() {
-    const navButtons = document.querySelectorAll('.nav-btn');
-
-    navButtons.forEach((button) => {
-      button.addEventListener('click', () => {
-        activateTab(button.dataset.tab);
-      });
-    });
-  }
-
-  function bindControls() {
-    const openAgentModalBtn = document.getElementById('openAgentModalBtn');
-    const closeAgentModalBtn = document.getElementById('closeAgentModalBtn');
-    const modalOkBtn = document.getElementById('modalOkBtn');
-    const refreshMediaBtn = document.getElementById('refreshMediaBtn');
-    const pdfDropZone = document.getElementById('pdfDropZone');
-    const imgInput = document.getElementById('imgInput');
-    const audioBrowseBtn = document.getElementById('audioBrowseBtn');
-    const audioInput = document.getElementById('audioInput');
-
-    openAgentModalBtn?.addEventListener('click', showAgentModal);
-    closeAgentModalBtn?.addEventListener('click', hideAgentModal);
-    modalOkBtn?.addEventListener('click', hideAgentModal);
-    refreshMediaBtn?.addEventListener('click', () => {
-      if (typeof window.refreshMediaFiles === 'function') {
-        window.refreshMediaFiles();
-      }
-    });
-
-    pdfDropZone?.addEventListener('click', () => imgInput?.click());
-    audioBrowseBtn?.addEventListener('click', () => audioInput?.click());
-
-    document.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape') {
-        hideAgentModal();
-      }
-    });
-  }
-
-  function syncDocumentTitle() {
-    const title = document.querySelector('title');
-    if (title) {
-      document.title = title.textContent;
-    }
-  }
-
-  function initApp() {
-    syncDocumentTitle();
-    bindNavigation();
-    bindControls();
-    bindGlobalFileDragOverlay();
-    activateTab(getStoredTab());
-    checkConnectivity();
-    window.setInterval(checkConnectivity, 5000);
-  }
-
-  window.API_URL = resolveApiUrl();
-  window.getApiUrl = getApiUrl;
-  window.apiFetch = apiFetch;
-  window.showGlobalProgress = showGlobalProgress;
-  window.hideGlobalProgress = hideGlobalProgress;
-  window.showAgentModal = showAgentModal;
-  window.hideAgentModal = hideAgentModal;
-
-  window.addEventListener('torktool:i18n-ready', () => {
-    syncDocumentTitle();
-  });
-
-  const start = () => initApp();
-  if (window.i18n?.ready) {
-    window.i18n.ready.then(start);
-  } else {
-    start();
-  }
-})();
-
-async function setLatestStableDownload() {
-  const res = await fetch(
-    "https://api.github.com/repos/Explotador72/Torktool/releases"
-  );
-
-  const releases = await res.json();
-
-  const stable = releases.find(r => !r.prerelease);
-
-  const exe = stable.assets.find(a => a.name === "TorkTool.exe");
-
-  const btn = document.getElementById("download-btn");
-
-  btn.href = exe.browser_download_url;
-  btn.setAttribute("download", "TorkTool.exe");
-}
-
-
-document.getElementById("download-btn")?.addEventListener("click", async () => {
+document.addEventListener('DOMContentLoaded', async () => {
+  // Wait for translations to be ready
+  await i18n.ready;
+  
+  // Initialize Modules
+  initMediaModule();
+  initPdfModule();
+  initTranscriberModule();
+  
+  // Global UI logic
+  initTabSystem();
+  initAgentStatusSystem();
+  initDragAndDrop();
+  initAgentModal();
   setLatestStableDownload();
 });
+
+function initTabSystem() {
+  const navButtons = document.querySelectorAll('.nav-btn');
+  const tabContents = document.querySelectorAll('.tab-content');
+
+  function switchTab(tabId) {
+    navButtons.forEach((btn) => btn.classList.toggle('active', btn.dataset.tab === tabId));
+    tabContents.forEach((content) => content.classList.toggle('active', content.id === tabId));
+    localStorage.setItem(ACTIVE_TAB_KEY, tabId);
+  }
+
+  navButtons.forEach((btn) => {
+    btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+  });
+
+  const savedTab = localStorage.getItem(ACTIVE_TAB_KEY);
+  if (savedTab) switchTab(savedTab);
+}
+
+function initAgentStatusSystem() {
+  const statusBar = document.getElementById('backendStatus');
+  const statusText = document.getElementById('statusText');
+  const statusDot = document.getElementById('status-dot');
+  const modalStatus = document.getElementById('modalStatus');
+  const modalStatusText = document.getElementById('modalStatusText');
+
+  async function checkStatus() {
+    try {
+      const response = await apiFetch('/api/status');
+      const data = await response.json();
+
+      const isOnline = data.status === 'online';
+      statusBar?.classList.remove('online', 'offline');
+      statusBar?.classList.add(isOnline ? 'online' : 'offline');
+
+      
+      if (statusText) {
+        statusText.textContent = isOnline ? i18n.t('status.online') : i18n.t('status.offline');
+      }
+
+      if (isOnline) {
+        console.log('Backend is online');
+        await refreshMediaFiles();
+      }
+      if (modalStatus) {
+        modalStatus.className = `status-indicator ${isOnline ? 'online' : 'offline'}`;
+        if (modalStatusText) modalStatusText.textContent = isOnline ? i18n.t('status.modal_online') : i18n.t('status.modal_offline');
+      }
+    } catch (error) {
+      statusBar?.classList.remove('online', 'offline');
+      statusBar?.classList.add('offline');
+      await refreshMediaFiles();
+      if (statusText) statusText.textContent = i18n.t('status.offline');
+    }
+  }
+
+  setInterval(checkStatus, 5000);
+  checkStatus();
+}
+
+function initDragAndDrop() {
+  const dropOverlay = document.getElementById('dropOverlay');
+  let dragCounter = 0;
+
+  window.addEventListener('dragenter', (e) => {
+    e.preventDefault();
+    dragCounter++;
+    dropOverlay?.classList.add('active');
+  });
+
+  window.addEventListener('dragleave', (e) => {
+    e.preventDefault();
+    dragCounter--;
+    if (dragCounter === 0) dropOverlay?.classList.remove('active');
+  });
+
+  window.addEventListener('dragover', (e) => e.preventDefault());
+
+  window.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dragCounter = 0;
+    dropOverlay?.classList.remove('active');
+  });
+}
+
+function initAgentModal() {
+  const modal = document.getElementById('agentModal');
+  const openBtn = document.getElementById('openAgentModalBtn');
+  const closeBtn = document.getElementById('closeAgentModalBtn');
+  const okBtn = document.getElementById('modalOkBtn');
+
+  const toggle = (show) => modal?.classList.toggle('active', show);
+
+  openBtn?.addEventListener('click', () => toggle(true));
+  closeBtn?.addEventListener('click', () => toggle(false));
+  okBtn?.addEventListener('click', () => toggle(false));
+
+  window.addEventListener('click', (e) => {
+    if (e.target === modal) toggle(false);
+  });
+}
+
+async function setLatestStableDownload() {
+  const btn = document.getElementById("download-btn");
+  if (!btn) return;
+  try {
+    const res = await fetch("https://api.github.com/repos/MrtinTrape/Torktool/releases/latest");
+    const release = await res.json();
+    const exe = release.assets.find(a => a.name.endsWith(".exe"));
+    if (exe) {
+      btn.href = exe.browser_download_url;
+      btn.setAttribute("download", "TorkTool.exe");
+    }
+  } catch (e) {
+    console.error("Error fetching release:", e);
+  }
+}

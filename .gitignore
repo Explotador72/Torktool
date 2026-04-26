@@ -1,3 +1,4 @@
 dist/
 build/TorkTool/
 .env
+__pycache__/

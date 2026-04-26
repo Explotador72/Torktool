@@ -1,0 +1,19 @@
+:root {
+    /*Base colors*/
+    --rf-onyx: #0a0a0a;
+    --rf-electric-indigo: #6d28d9;
+    --rf-laser-blue: #0e56c9;
+    --rf-burnt-orange: #c2410c;
+    --rf-linen: #f0e7e1;
+    --rf-emerald-green: #10b981;
+    /*Shades and tints*/
+    --rf-onyx-light: #1a1a1a;
+    --rf-onyx-dark: #050505;
+    /*Secondary colors*/
+    --rf-linen-dark: #d9cfc6;
+    --rf-emerald-green-light: #34d399;
+    --rf-electric-indigo-hover: #7c3aed;
+    /*Typography*/
+    --rf-font-main: 'Inter', sans-serif;
+    --rf-font-heading: 'Sora', sans-serif;
+}

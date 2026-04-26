@@ -3,3 +3,8 @@ flask-cors
 yt-dlp
 spotifyscraper
 pyinstaller
+websocket-client
+requests
+certifi
+Flask-Limiter
+setuptools-rust

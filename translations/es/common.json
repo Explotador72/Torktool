@@ -25,7 +25,7 @@
     "format_mp3": "MP3 (Audio)",
     "format_mp4": "MP4 (Video)",
     "history": "Descargas Recientes",
-    "empty_recent": "No hay descargas recientes aún.",
+    "empty_recent": "No hay descargas aún.",
     "loading": "Obteniendo información...",
     "invalid_url": "Por favor ingresa un link válido.",
     "unsupported_url": "Link no reconocido. Soporta YouTube y Spotify.",
@@ -102,6 +102,7 @@
     "refresh": "Actualizar",
     "understood": "Entendido",
     "error": "Error",
+    "open_folder": "Abrir carpeta",
     "download_now": "Descargar ahora"
   }
 }
