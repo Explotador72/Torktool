@@ -61,12 +61,27 @@ function build() {
 
   function renderHtml(source, dictionary, language) {
     const flat = flattenDictionary(dictionary);
-    return source
+    const html = source
       .replace(/<html lang="[^"]*">/, `<html lang="${language}">`)
       .replace(/\{\{([\w.-]+)\}\}/g, (_, key) => {
         const normalizedKey = flat[key] !== undefined ? key : normalizeTemplateKey(key);
         return flat[normalizedKey] !== undefined ? String(flat[normalizedKey]) : `{{${key}}}`;
       });
+
+    // Remove i18n-loader dependency from production build
+    return html
+      .replace('<script type="module" src="assets/js/i18n-loader.js"></script>', '')
+      .replace('</head>', `
+    <script>
+      window.i18n = {
+        t: (key) => {
+          const dict = ${JSON.stringify(flat)};
+          return dict[key] || key;
+        },
+        ready: Promise.resolve()
+      };
+    </script>
+</head>`);
   }
 
   languages.forEach((language) => {

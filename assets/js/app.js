@@ -1,12 +1,12 @@
 /**
  * Main Application Entry Point (ES Module)
  */
-import { i18n, applyTranslations } from './i18n-loader.js';
 import { apiFetch, getApiUrl } from './utils.js';
 import { initMediaModule, refreshMediaFiles } from './media.js';
 import { initPdfModule } from './pdf.js';
 import { initTranscriberModule } from './transcriber.js';
 
+const i18n = window.i18n || { t: (k) => k, ready: Promise.resolve() };
 const ACTIVE_TAB_KEY = 'torktool.activeTab';
 
 document.addEventListener('DOMContentLoaded', async () => {
