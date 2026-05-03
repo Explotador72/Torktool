@@ -9,6 +9,9 @@
     "online": "Agente Local Activo",
     "offline": "Agente Local Desconectado",
     "configure": "Configurar",
+    "connect": "Conectar",
+    "connecting": "Conectando...",
+    "connected": "Conectado",
     "modal_online": "Agente configurado correctamente",
     "modal_offline": "Agente no detectado"
   },

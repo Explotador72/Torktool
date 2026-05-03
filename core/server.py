@@ -163,7 +163,7 @@ def open_downloads_folder():
 
         if path:
             if os.name == "nt":
-                subprocess.Popen(["explorer.exe", f"/select,{str(path)}"])
+                subprocess.Popen(["explorer.exe", f"/select,{str(path)}"], creationflags=0x08000000)
             else:
                 subprocess.Popen(["explorer", str(path.parent)])
             return jsonify({"success": True, "found": True})
@@ -171,7 +171,7 @@ def open_downloads_folder():
         if os.name == "nt":
             os.startfile(str(DOWNLOADS_DIR))
         else:
-            subprocess.Popen(["explorer", str(DOWNLOADS_DIR)])
+            subprocess.Popen(["explorer", str(DOWNLOADS_DIR)], creationflags=0x08000000 if os.name == "nt" else 0)
 
         return jsonify({"success": True, "found": False, "folder": str(DOWNLOADS_DIR)})
     except Exception as e:

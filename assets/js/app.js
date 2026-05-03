@@ -47,41 +47,129 @@ function initTabSystem() {
 function initAgentStatusSystem() {
   const statusBar = document.getElementById('backendStatus');
   const statusText = document.getElementById('statusText');
-  const statusDot = document.getElementById('status-dot');
   const modalStatus = document.getElementById('modalStatus');
   const modalStatusText = document.getElementById('modalStatusText');
+  const connectBtn = document.getElementById('connectAgentBtn');
 
-  async function checkStatus() {
+  let pollInterval = 5000;
+  let timerId = null;
+  let isConnectingManually = false;
+
+  async function checkStatus(isManual = false) {
     try {
       const response = await apiFetch('/api/status');
       const data = await response.json();
 
       const isOnline = data.status === 'online';
+      
+      // Update UI
       statusBar?.classList.remove('online', 'offline');
       statusBar?.classList.add(isOnline ? 'online' : 'offline');
-
       
       if (statusText) {
         statusText.textContent = isOnline ? i18n.t('status.online') : i18n.t('status.offline');
       }
 
       if (isOnline) {
-        console.log('Backend is online');
+        if (pollInterval !== 5000) console.log('Agent reconnected, restoring fast polling.');
+        pollInterval = 5000; 
         await refreshMediaFiles();
+        
+        isConnectingManually = false;
+        
+        if (connectBtn && !connectBtn.classList.contains('connected')) {
+            updateConnectBtnState('connected');
+        }
+      } else {
+        pollInterval = 30000; 
+        if (connectBtn && connectBtn.classList.contains('connected')) {
+            updateConnectBtnState('connect');
+        }
       }
+
       if (modalStatus) {
         modalStatus.className = `status-indicator ${isOnline ? 'online' : 'offline'}`;
         if (modalStatusText) modalStatusText.textContent = isOnline ? i18n.t('status.modal_online') : i18n.t('status.modal_offline');
       }
+      
+      return isOnline;
     } catch (error) {
       statusBar?.classList.remove('online', 'offline');
       statusBar?.classList.add('offline');
-      await refreshMediaFiles();
       if (statusText) statusText.textContent = i18n.t('status.offline');
+      pollInterval = 30000; 
+      
+      if (connectBtn && (connectBtn.classList.contains('connected') || connectBtn.classList.contains('connecting'))) {
+          updateConnectBtnState('connect');
+      }
+      
+      return false;
+    } finally {
+      if (!isManual) {
+        if (timerId) clearTimeout(timerId);
+        timerId = setTimeout(() => checkStatus(), pollInterval);
+      }
     }
   }
 
-  setInterval(checkStatus, 5000);
+  function updateConnectBtnState(state) {
+    if (!connectBtn) return;
+    const span = connectBtn.querySelector('span');
+    const icon = connectBtn.querySelector('i');
+
+    switch (state) {
+      case 'connect':
+        connectBtn.disabled = false;
+        connectBtn.classList.remove('connecting', 'connected');
+        if (span) span.textContent = i18n.t('status.connect');
+        if (icon) icon.className = 'fas fa-plug';
+        break;
+      case 'connecting':
+        connectBtn.disabled = true;
+        connectBtn.classList.remove('connected');
+        connectBtn.classList.add('connecting');
+        if (span) span.textContent = i18n.t('status.connecting');
+        if (icon) icon.className = 'fas fa-spinner fa-spin';
+        break;
+      case 'connected':
+        connectBtn.disabled = true;
+        connectBtn.classList.remove('connecting');
+        connectBtn.classList.add('connected');
+        if (span) span.textContent = i18n.t('status.connected');
+        if (icon) icon.className = 'fas fa-check';
+        break;
+    }
+  }
+
+  connectBtn?.addEventListener('click', async () => {
+    if (isConnectingManually) return;
+    
+    isConnectingManually = true;
+    updateConnectBtnState('connecting');
+
+    const maxAttempts = 10; // 20 seconds / 2 seconds
+    let attempts = 0;
+
+    const attemptConnection = async () => {
+      attempts++;
+      const online = await checkStatus(true);
+      
+      if (online) {
+        // Success handled inside checkStatus
+        return;
+      }
+
+      if (attempts < maxAttempts && isConnectingManually) {
+        setTimeout(attemptConnection, 2000);
+      } else {
+        isConnectingManually = false;
+        updateConnectBtnState('connect');
+      }
+    };
+
+    attemptConnection();
+  });
+
   checkStatus();
 }
 
@@ -130,15 +218,33 @@ function initAgentModal() {
 async function setLatestStableDownload() {
   const btn = document.getElementById("download-btn");
   if (!btn) return;
+
+  const repoUrl = "https://github.com/MrtinTrape/Torktool";
+  const apiUrl = "https://api.github.com/repos/MrtinTrape/Torktool/releases/latest";
+
+  // Default fallback link to the releases page
+  btn.href = `${repoUrl}/releases`;
+
   try {
-    const res = await fetch("https://api.github.com/repos/MrtinTrape/Torktool/releases/latest");
+    const res = await fetch(apiUrl);
+
+    // Check if the response is actually JSON before parsing
+    const contentType = res.headers.get("content-type");
+    if (!res.ok || !contentType || !contentType.includes("application/json")) {
+      console.warn('Latest release info not available or invalid format, using fallback link.');
+      return;
+    }
+
     const release = await res.json();
-    const exe = release.assets.find(a => a.name.endsWith(".exe"));
-    if (exe) {
-      btn.href = exe.browser_download_url;
-      btn.setAttribute("download", "TorkTool.exe");
+    if (release && release.assets && Array.isArray(release.assets)) {
+      const exe = release.assets.find(a => a.name && a.name.endsWith(".exe"));
+      if (exe) {
+        btn.href = exe.browser_download_url;
+        btn.setAttribute("download", "TorkTool.exe");
+      }
     }
   } catch (e) {
-    console.error("Error fetching release:", e);
+    console.warn('Error processing release info:', e.message);
   }
 }
+

@@ -16,7 +16,13 @@
   <div id="backendStatus" class="status-bar offline">
     <div class="status-dot"></div>
     <span id="statusText">{{status-offline}}</span>
-    <button id="openAgentModalBtn" class="btn-setup">{{status-configure}}</button>
+    <div class="status-actions">
+      <button id="connectAgentBtn" class="btn-setup secondary">
+        <i class="fas fa-plug"></i>
+        <span>{{status-connect}}</span>
+      </button>
+      <button id="openAgentModalBtn" class="btn-setup">{{status-configure}}</button>
+    </div>
   </div>
 
   <div class="app-container">
@@ -226,7 +232,7 @@
         </div>
       </div>
       <div class="modal-footer">
-        <a class="btn-outline" id="download-btn">
+        <a class="btn-outline" id="download-btn" target="_blank" rel="noopener noreferrer">
           <i class="fas fa-download"></i>
           <span>{{common-download_now}}</span>
         </a>

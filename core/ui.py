@@ -2,6 +2,7 @@ import os
 import sys
 import ctypes
 import webbrowser
+import subprocess
 from core.config import logger, WEB_APP_URL, LOCAL_AGENT_HOST, LOCAL_AGENT_PORT, LOG_FILE
 
 IS_WINDOWS = sys.platform.startswith("win")
@@ -10,6 +11,7 @@ if IS_WINDOWS:
     from ctypes import wintypes
     user32 = ctypes.windll.user32
     kernel32 = ctypes.windll.kernel32
+    CREATE_NEW_CONSOLE = 0x00000010
 
     # Win32 Constants
     WM_DESTROY = 0x0002
@@ -103,7 +105,12 @@ if IS_WINDOWS:
             if msg == WM_COMMAND:
                 bid = wparam & 0xFFFF
                 if bid == BUTTON_OPEN_ID: webbrowser.open(WEB_APP_URL)
-                elif bid == BUTTON_DEBUG_ID: os.startfile(LOG_FILE) if LOG_FILE.exists() else None
+                elif bid == BUTTON_DEBUG_ID:
+                    if LOG_FILE.exists():
+                        if IS_WINDOWS:
+                            subprocess.Popen(["powershell.exe", "-NoExit", "-Command", f"Get-Content -Path '{LOG_FILE}' -Wait -Tail 50"], creationflags=CREATE_NEW_CONSOLE)
+                        else:
+                            os.startfile(LOG_FILE)
                 elif bid == BUTTON_MINIMIZE_ID: user32.ShowWindow(hwnd, SW_MINIMIZE)
                 elif bid == BUTTON_CLOSE_ID: user32.SendMessageW(hwnd, WM_CLOSE, 0, 0)
             elif msg == WM_LBUTTONDOWN:

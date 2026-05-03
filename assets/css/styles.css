@@ -92,10 +92,41 @@ body {
   font-size: 11px;
   cursor: pointer;
   transition: 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-setup i {
+  font-size: 10px;
 }
 
 .btn-setup:hover {
   background: rgba(240, 231, 225, 0.10);
+}
+
+.btn-setup.secondary {
+  margin-left: 0;
+}
+
+.btn-setup.connecting {
+  background: var(--info-soft);
+  border-color: var(--info);
+  color: var(--info);
+  cursor: wait;
+}
+
+.btn-setup.connected {
+  background: var(--success-soft);
+  border-color: var(--success);
+  color: var(--success);
+  cursor: default;
+}
+
+.status-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
 }
 
 /* App Layout */

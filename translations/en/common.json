@@ -9,6 +9,9 @@
     "online": "Local Agent Online",
     "offline": "Local Agent Offline",
     "configure": "Configure",
+    "connect": "Connect",
+    "connecting": "Connecting...",
+    "connected": "Connected",
     "modal_online": "Agent configured correctly",
     "modal_offline": "Agent not detected"
   },

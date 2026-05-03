@@ -58,19 +58,28 @@ export function getApiUrl() {
 }
 
 export async function apiFetch(endpoint, options = {}) {
-  const baseUrl = getApiUrl();
-  const url = endpoint.startsWith('http') ? endpoint : `${baseUrl}${endpoint}`;
-  
-  const headers = {
-    ...options.headers,
-    'X-Client-Type': 'TorkTool-Web',
-  };
+    try {
+        const baseUrl = getApiUrl();
+        const url = endpoint.startsWith('http') ? endpoint : `${baseUrl}${endpoint}`;
+        
+        const headers = {
+            ...options.headers,
+            'X-Client-Type': 'TorkTool-Web',
+        };
 
-  if (!endpoint.includes('/api/download/')) {
-    options.headers = headers;
-  }
+        if (!endpoint.includes('/api/download/')) {
+            options.headers = headers;
+        }
 
-  return fetch(url, options);
+        const response = await fetch(url, options);
+        return response; 
+    } catch (error) {
+        console.warn(`Server unreachable: ${endpoint}`);
+        return new Response(JSON.stringify({ error: 'Server unreachable' }), {
+            status: 503,
+            headers: { 'Content-Type': 'application/json' }
+        });
+    }
 }
 
 export function showGlobalProgress(label, percent) {

@@ -1,4 +1,5 @@
 import subprocess
+import sys
 from core.config import logger
 
 class SystemSetup:
@@ -6,7 +7,10 @@ class SystemSetup:
     def verify_ffmpeg():
         try:
             # check ffmpeg version to verify existence
-            return subprocess.run(["ffmpeg", "-version"], capture_output=True, timeout=10).returncode == 0
+            creationflags = 0
+            if sys.platform.startswith("win"):
+                creationflags = 0x08000000 # CREATE_NO_WINDOW
+            return subprocess.run(["ffmpeg", "-version"], capture_output=True, timeout=10, creationflags=creationflags).returncode == 0
         except:
             return False
 
