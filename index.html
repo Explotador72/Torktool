@@ -100,70 +100,127 @@
 
       <section id="imgpdf" class="tab-content">
         <div class="content-header">
-          <h2>{{pdf-title}}</h2>
-          <p>{{pdf-description}}</p>
+          <h2>{{img-title}}</h2>
+          <p>{{img-description}}</p>
         </div>
 
-        <div class="pdf-workflow">
-          <div class="tool-card pdf-config-card">
-            <div class="config-grid">
-              <div class="modern-input-group">
-                <label><i class="fas fa-signature"></i> <span>{{pdf-filename_label}}</span></label>
-                <div class="input-with-icon">
-                  <input id="nameInput" type="text" placeholder="{{pdf-filename_placeholder}}">
-                  <span class="extension-tag">.pdf</span>
+        <div id="imgEditorContainer">
+          <div id="imgInitialState" class="img-initial-state">
+            <div class="upload-zone img-drop-zone" id="imgDropZone" tabindex="0" role="button">
+              <div class="upload-content">
+                <div class="upload-icon-stack">
+                  <i class="fas fa-cloud-arrow-up main-icon"></i>
+                  <i class="fas fa-image sub-icon"></i>
+                </div>
+                <div class="upload-text">
+                  <h3>{{img-upload_title}}</h3>
+                  <p>{{img-upload_desc}}</p>
+                </div>
+                <input id="imgFileInput" type="file" accept="image/png,image/jpeg,image/jpg,image/webp,image/gif,image/heic,image/bmp,image/avif" multiple hidden>
+              </div>
+            </div>
+          </div>
+
+          <div id="imgEditorLayout" class="img-editor-layout" style="display: none;">
+            <div class="img-gallery" id="imgGallery">
+              <div class="mini-drop-zone" id="imgMiniDropZone">
+                <i class="fas fa-plus"></i>
+                <span id="imgCountBadge">0</span>
+              </div>
+              <div id="imgGalleryList"></div>
+            </div>
+
+            <div class="img-preview-area">
+              <div class="mini-drop-zone-compact" id="imgCompactDropZone">
+                <i class="fas fa-plus"></i>
+                <span>{{img-add_more}}</span>
+              </div>
+              <div class="img-preview-container" id="imgPreviewContainer">
+                <img id="imgPreview" src="" alt="Preview">
+                <div class="img-preview-empty">{{img-select_image}}</div>
+              </div>
+              <div class="img-preview-actions">
+                <button id="imgDownloadBtn" class="btn-primary" disabled>
+                  <i class="fas fa-download"></i>
+                  <span>{{img-download}}</span>
+                </button>
+                <button id="imgDownloadAllBtn" class="btn-outline">
+                  <i class="fas fa-download"></i>
+                  <span>{{img-download_all}}</span>
+                </button>
+                <button id="imgClearAllBtn" class="btn-outline btn-danger">
+                  <i class="fas fa-trash"></i>
+                  <span>{{img-clear_all}}</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="img-options-panel" id="imgOptionsPanel">
+              <div class="option-group">
+                <label><i class="fas fa-file-image"></i> {{img-format}}</label>
+                <select id="imgFormatSelect" class="modern-select">
+                  <option value="original">{{img-format_original}}</option>
+                  <option value="png">PNG</option>
+                  <option value="jpeg">JPG</option>
+                  <option value="webp">WebP</option>
+                  <option value="gif">GIF</option>
+                </select>
+              </div>
+
+              <div class="option-group">
+                <label><i class="fas fa-expand"></i> {{img-resize}}</label>
+                <div class="resize-inputs">
+                  <div class="resize-input-group">
+                    <input type="number" id="imgWidthInput" placeholder="{{img-width}}" min="1">
+                    <span>x</span>
+                    <input type="number" id="imgHeightInput" placeholder="{{img-height}}" min="1">
+                  </div>
+                  <label class="checkbox-label">
+                    <input type="checkbox" id="imgKeepAspectCheck" checked>
+                    <i class="fas fa-lock" id="imgAspectLockIcon"></i>
+                    {{img-keep_aspect}}
+                  </label>
+                  <button id="imgApplyResizeBtn" class="btn-outline btn-small">{{img-apply_all}}</button>
                 </div>
               </div>
 
-              <div class="modern-input-group">
-                <label><i class="fas fa-expand"></i> <span>{{pdf-fit_label}}</span></label>
-                <div class="toggle-selector">
-                  <label class="toggle-option">
-                    <input type="radio" name="pdfFormat" id="A4Checkbox">
-                    <div class="option-content">
-                      <i class="fas fa-file-lines"></i>
-                      <span>{{pdf-size_a4}}</span>
-                    </div>
-                  </label>
-                  <label class="toggle-option">
-                    <input type="radio" name="pdfFormat" id="UniformCheckbox" checked>
-                    <div class="option-content">
-                      <i class="fas fa-border-all"></i>
-                      <span>{{pdf-uniform}}</span>
-                    </div>
-                  </label>
+              <div class="option-group">
+                <label><i class="fas fa-compress"></i> {{img-compress}}</label>
+                <div class="compress-inputs">
+                  <input type="range" id="imgQualitySlider" min="1" max="100" value="90">
+                  <div class="compress-values">
+                    <span id="imgQualityValue">90%</span>
+                    <input type="number" id="imgTargetSizeInput" placeholder="{{img-target_kb}}" min="1">
+                    <span>KB</span>
+                  </div>
+                  <div id="imgSizeEstimate" class="size-estimate">{{img-original_size}}: <span id="imgOriginalSizeValue">-</span></div>
                 </div>
               </div>
-            </div>
-          </div>
 
-          <div class="upload-zone" id="pdfDropZone" tabindex="0" role="button">
-            <div class="upload-content">
-              <div class="upload-icon-stack">
-                <i class="fas fa-cloud-arrow-up main-icon"></i>
-                <i class="fas fa-image sub-icon"></i>
+              <div class="option-group">
+                <label><i class="fas fa-eraser"></i> {{img-remove_bg}}</label>
+                <button id="imgRemoveBgBtn" class="btn-primary btn-full" disabled>
+                  <i class="fas fa-magic"></i>
+                  <span>{{img-remove_bg_btn}}</span>
+                </button>
+                <div id="imgBgProgress" class="progress-bar-container" style="display: none;">
+                  <div class="progress-bar" id="imgBgProgressBar"></div>
+                  <span id="imgBgProgressText">0%</span>
+                </div>
               </div>
-              <div class="upload-text">
-                <h3>{{pdf-upload_title}}</h3>
-                <p>{{pdf-upload_desc}}</p>
-              </div>
-              <input id="imgInput" type="file" accept="image/*,.heic" multiple hidden>
-            </div>
-          </div>
 
-          <div class="pdf-actions" id="pdfActionsArea" style="display: none;">
-            <div class="selection-info">
-              <i class="fas fa-images"></i>
-              <span id="imageCountText">{{pdf-images_selected_zero}}</span>
+              <div class="option-group">
+                <label><i class="fas fa-stamp"></i> {{img-remove_watermark}}</label>
+                <button id="imgWatermarkBtn" class="btn-outline btn-full" disabled>
+                  <i class="fas fa-vector-square"></i>
+                  <span>{{img-watermark_select}}</span>
+                </button>
+              </div>
             </div>
-            <button id="convertPdfBtn" class="btn-primary btn-large" disabled>
-              <i class="fas fa-file-export"></i>
-              <span>{{pdf-generate}}</span>
-            </button>
           </div>
         </div>
 
-        <div id="previewPdf" class="image-grid-modern"></div>
+        <div id="imgPreviewGrid" class="image-grid-modern"></div>
       </section>
 
       <section id="converter" class="tab-content">
@@ -253,6 +310,7 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
+  <script type="module" src="https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.5.1/dist/index.js"></script>
   <script type="module" src="assets/js/i18n-loader.js"></script>
   <script type="module" src="assets/js/app.js"></script>
 </body>

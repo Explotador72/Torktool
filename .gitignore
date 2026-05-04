@@ -3,3 +3,4 @@ build/TorkTool/
 .env
 __pycache__/
 TorkTool.zip
+.agents/

@@ -5,6 +5,7 @@ import { apiFetch, getApiUrl } from './utils.js';
 import { initMediaModule, refreshMediaFiles } from './media.js';
 import { initPdfModule } from './pdf.js';
 import { initTranscriberModule } from './transcriber.js';
+import { initImgModule } from './img.js';
 
 const i18n = window.i18n || { t: (k) => k, ready: Promise.resolve() };
 const ACTIVE_TAB_KEY = 'torktool.activeTab';
@@ -17,6 +18,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   initMediaModule();
   initPdfModule();
   initTranscriberModule();
+  initImgModule();
   
   // Global UI logic
   initTabSystem();
