@@ -85,6 +85,7 @@
     "width": "Width",
     "height": "Height",
     "keep_aspect": "Keep aspect ratio",
+    "apply": "Apply",
     "apply_all": "Apply to all",
     "compress": "Compression",
     "target_kb": "Target size",
@@ -92,7 +93,9 @@
     "remove_bg": "Remove Background",
     "remove_bg_btn": "Remove background automatically",
     "remove_watermark": "Remove Watermark",
-    "watermark_select": "Select area"
+    "watermark_select": "Select area",
+    "tab_editor": "Editor",
+    "tab_pdf": "Convert to PDF"
   },
   "transcriber": {
     "title": "Audio to Text",

@@ -26,23 +26,47 @@ document.addEventListener('DOMContentLoaded', async () => {
   initDragAndDrop();
   initAgentModal();
   setLatestStableDownload();
+  
+  // Make switchTab available globally
+  window.switchTab = function(tabId) {
+    const navButtons = document.querySelectorAll('.nav-btn');
+    const tabContents = document.querySelectorAll('.tab-content');
+
+    navButtons.forEach((btn) => btn.classList.toggle('active', btn.dataset.tab === tabId));
+    tabContents.forEach((content) => content.classList.toggle('active', content.id === tabId));
+    localStorage.setItem(ACTIVE_TAB_KEY, tabId);
+  };
 });
 
 function initTabSystem() {
   const navButtons = document.querySelectorAll('.nav-btn');
   const tabContents = document.querySelectorAll('.tab-content');
+  console.log('navButtons:', navButtons.length, 'tabContents:', tabContents.length);
 
   function switchTab(tabId) {
-    navButtons.forEach((btn) => btn.classList.toggle('active', btn.dataset.tab === tabId));
-    tabContents.forEach((content) => content.classList.toggle('active', content.id === tabId));
+    console.log('switching to tab:', tabId);
+    navButtons.forEach((btn) => {
+      const isActive = btn.dataset.tab === tabId;
+      btn.classList.toggle('active', isActive);
+      console.log('btn', btn.dataset.tab, 'active:', isActive);
+    });
+    tabContents.forEach((content) => {
+      const isActive = content.id === tabId;
+      content.classList.toggle('active', isActive);
+      console.log('content', content.id, 'active:', isActive);
+    });
     localStorage.setItem(ACTIVE_TAB_KEY, tabId);
   }
 
   navButtons.forEach((btn) => {
-    btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+    btn.addEventListener('click', (e) => {
+      console.log('nav button clicked:', btn.dataset.tab);
+      switchTab(btn.dataset.tab);
+    });
   });
 
   const savedTab = localStorage.getItem(ACTIVE_TAB_KEY);
+  console.log('savedTab:', savedTab);
   if (savedTab) switchTab(savedTab);
 }
 
@@ -181,6 +205,12 @@ function initDragAndDrop() {
 
   window.addEventListener('dragenter', (e) => {
     e.preventDefault();
+    
+    // Don't show overlay for internal page drags (like images from preview)
+    const isInternalDrag = e.dataTransfer.types.includes('text/html') && 
+                           e.dataTransfer.types.includes('Files');
+    if (isInternalDrag) return;
+    
     dragCounter++;
     dropOverlay?.classList.add('active');
   });

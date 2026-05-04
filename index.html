@@ -3,7 +3,41 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>{{app-title}}</title>
+    <title>TorkTool - Centro de Utilidades | Descargas, PDFs, Transcripción</title>
+    <meta name="description" content="Descarga música de Spotify/YouTube, convierte imágenes a PDF y transcribe audio a texto. Herramientas gratuitas 100% seguras y locales.">
+    <meta name="robots" content="index, follow">
+    <link rel="canonical" href="https://torktool.roftcore.work/">
+    
+    <!-- Open Graph -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://torktool.roftcore.work/">
+    <meta property="og:title" content="TorkTool - Centro de Utilidades">
+    <meta property="og:description" content="Descarga música, convierte imágenes a PDF y transcribe audio.">
+    <meta property="og:image" content="https://torktool.roftcore.work/img/og-image.png">
+    
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="TorkTool - Centro de Utilidades">
+    <meta name="twitter:description" content="Descarga música, convierte imágenes a PDF y transcribe audio.">
+    <meta name="twitter:image" content="https://torktool.roftcore.work/img/og-image.png">
+    
+    <!-- Schema.org -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "TorkTool",
+      "description": "Centro de utilidades para descargar música, convertir imágenes a PDF y transcribir audio.",
+      "url": "https://torktool.roftcore.work/",
+      "applicationCategory": "UtilityApplication",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      }
+    }
+    </script>
+    
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -11,6 +45,35 @@
     <link rel="stylesheet" href="assets/css/palette.css">
     <link rel="stylesheet" href="assets/css/styles.css">
     <link rel="icon" type="image/png" href="img/torken.png">
+    <script>
+      // Global functions available immediately
+      window.switchTab = function(tabId) {
+        var navButtons = document.querySelectorAll('.nav-btn');
+        var tabContents = document.querySelectorAll('.tab-content');
+        navButtons.forEach(function(btn) {
+          btn.classList.toggle('active', btn.dataset.tab === tabId);
+        });
+        tabContents.forEach(function(content) {
+          content.classList.toggle('active', content.id === tabId);
+        });
+        localStorage.setItem('torktool.activeTab', tabId);
+      };
+      window.switchImgView = function(view) {
+        var toolbarBtns = document.querySelectorAll('.img-toolbar-btn');
+        var editorView = document.getElementById('imgEditorView');
+        var pdfView = document.getElementById('imgPdfView');
+        toolbarBtns.forEach(function(b) { b.classList.remove('active'); });
+        var activeBtn = document.querySelector('.img-toolbar-btn[data-img-view="' + view + '"]');
+        if (activeBtn) activeBtn.classList.add('active');
+        if (view === 'editor') {
+          if (editorView) editorView.style.display = 'block';
+          if (pdfView) pdfView.style.display = 'none';
+        } else {
+          if (editorView) editorView.style.display = 'none';
+          if (pdfView) pdfView.style.display = 'block';
+        }
+      };
+    </script>
 </head>
 <body>
   <div id="backendStatus" class="status-bar offline">
@@ -33,15 +96,15 @@
       </div>
 
       <nav class="sidebar-nav">
-        <button class="nav-btn active" data-tab="media">
+        <button class="nav-btn active" data-tab="media" onclick="switchTab('media')">
           <i class="fas fa-compact-disc"></i>
           <span>{{sidebar-media}}</span>
         </button>
-        <button class="nav-btn" data-tab="imgpdf">
+        <button class="nav-btn" data-tab="imgpdf" onclick="switchTab('imgpdf')">
           <i class="fas fa-file-pdf"></i>
           <span>{{sidebar-pdf}}</span>
         </button>
-        <button class="nav-btn" data-tab="converter">
+        <button class="nav-btn" data-tab="converter" onclick="switchTab('converter')">
           <i class="fas fa-microphone-lines"></i>
           <span>{{sidebar-transcriber}}</span>
         </button>
@@ -99,128 +162,217 @@
       </section>
 
       <section id="imgpdf" class="tab-content">
-        <div class="content-header">
-          <h2>{{img-title}}</h2>
-          <p>{{img-description}}</p>
+        <div class="img-toolbar">
+          <button class="img-toolbar-btn active" data-img-view="editor" onclick="switchImgView('editor')">
+            <i class="fas fa-edit"></i>
+            <span>{{img-tab_editor}}</span>
+          </button>
+          <button class="img-toolbar-btn" data-img-view="pdf" onclick="switchImgView('pdf')">
+            <i class="fas fa-file-pdf"></i>
+            <span>{{img-tab_pdf}}</span>
+          </button>
         </div>
 
-        <div id="imgEditorContainer">
-          <div id="imgInitialState" class="img-initial-state">
-            <div class="upload-zone img-drop-zone" id="imgDropZone" tabindex="0" role="button">
-              <div class="upload-content">
-                <div class="upload-icon-stack">
-                  <i class="fas fa-cloud-arrow-up main-icon"></i>
-                  <i class="fas fa-image sub-icon"></i>
+        <div id="imgEditorView" class="img-view">
+          <div class="content-header">
+            <h2>{{img-title}}</h2>
+            <p>{{img-description}}</p>
+          </div>
+
+          <div id="imgEditorContainer">
+            <div id="imgInitialState" class="img-initial-state">
+              <div class="upload-zone img-drop-zone" id="imgDropZone" tabindex="0" role="button">
+                <div class="upload-content">
+                  <div class="upload-icon-stack">
+                    <i class="fas fa-cloud-arrow-up main-icon"></i>
+                    <i class="fas fa-image sub-icon"></i>
+                  </div>
+                  <div class="upload-text">
+                    <h3>{{img-upload_title}}</h3>
+                    <p>{{img-upload_desc}}</p>
+                  </div>
+                  <input id="imgFileInput" type="file" accept="image/png,image/jpeg,image/jpg,image/webp,image/gif,image/heic,image/bmp,image/avif" multiple hidden>
                 </div>
-                <div class="upload-text">
-                  <h3>{{img-upload_title}}</h3>
-                  <p>{{img-upload_desc}}</p>
+              </div>
+            </div>
+
+            <div id="imgEditorLayout" class="img-editor-layout" style="display: none;">
+              <div class="img-gallery" id="imgGallery">
+                <div class="mini-drop-zone" id="imgMiniDropZone">
+                  <i class="fas fa-plus"></i>
+                  <span id="imgCountBadge">0</span>
                 </div>
-                <input id="imgFileInput" type="file" accept="image/png,image/jpeg,image/jpg,image/webp,image/gif,image/heic,image/bmp,image/avif" multiple hidden>
+                <div id="imgGalleryList"></div>
+              </div>
+
+              <div class="img-preview-area">
+                <div class="mini-drop-zone-compact" id="imgCompactDropZone">
+                  <i class="fas fa-plus"></i>
+                  <span>{{img-add_more}}</span>
+                </div>
+                <div class="img-preview-container" id="imgPreviewContainer">
+                  <img id="imgPreview" src="" alt="Preview">
+                  <div class="img-preview-empty">{{img-select_image}}</div>
+                </div>
+                <div class="img-preview-actions">
+                  <button id="imgDownloadBtn" class="btn-primary" disabled>
+                    <i class="fas fa-download"></i>
+                    <span>{{img-download}}</span>
+                  </button>
+                  <button id="imgDownloadAllBtn" class="btn-outline">
+                    <i class="fas fa-download"></i>
+                    <span>{{img-download_all}}</span>
+                  </button>
+                  <button id="imgClearAllBtn" class="btn-outline btn-danger">
+                    <i class="fas fa-trash"></i>
+                    <span>{{img-clear_all}}</span>
+                  </button>
+                </div>
+              </div>
+
+              <div class="img-options-panel" id="imgOptionsPanel">
+                <div class="option-group">
+                  <label><i class="fas fa-file-image"></i> {{img-format}}</label>
+                  <select id="imgFormatSelect" class="modern-select">
+                    <option value="original">{{img-format_original}}</option>
+                    <option value="png">PNG</option>
+                    <option value="jpeg">JPG</option>
+                    <option value="webp">WebP</option>
+                    <option value="gif">GIF</option>
+                  </select>
+                </div>
+
+                <div class="option-group">
+                  <label><i class="fas fa-expand"></i> {{img-resize}}</label>
+                  <div class="resize-inputs">
+                    <div class="resize-input-group">
+                      <input type="number" id="imgWidthInput" placeholder="{{img-width}}" min="1">
+                      <span>x</span>
+                      <input type="number" id="imgHeightInput" placeholder="{{img-height}}" min="1">
+                    </div>
+                    <label class="checkbox-label">
+                      <input type="checkbox" id="imgKeepAspectCheck" checked>
+                      <i class="fas fa-lock" id="imgAspectLockIcon"></i>
+                      {{img-keep_aspect}}
+                    </label>
+                    <div class="resize-preview" id="imgResizePreview">
+                      <img id="imgResizePreviewImg" src="" alt="Preview">
+                    </div>
+                    <div class="resize-actions">
+                      <button id="imgApplyResizeBtn" class="btn-primary">{{img-apply}}</button>
+                      <div class="resize-apply-options" id="imgResizeOptions" style="display: none;">
+                        <button id="imgApplyToActiveBtn" class="btn-outline btn-small">{{img-apply}}</button>
+                        <button id="imgApplyToAllBtn" class="btn-outline btn-small">{{img-apply_all}}</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="option-group">
+                  <label><i class="fas fa-compress"></i> {{img-compress}}</label>
+                  <div class="compress-inputs">
+                    <input type="range" id="imgQualitySlider" min="1" max="100" value="100">
+                    <div class="compress-values">
+                      <span id="imgQualityValue">100%</span>
+                      <input type="number" id="imgTargetSizeInput" placeholder="{{img-target_kb}}" min="1">
+                      <span>KB</span>
+                    </div>
+                    <div id="imgSizeEstimate" class="size-estimate">{{img-original_size}}: <span id="imgOriginalSizeValue">-</span></div>
+                  </div>
+                </div>
+
+                <div class="option-group">
+                  <label><i class="fas fa-eraser"></i> {{img-remove_bg}}</label>
+                  <button id="imgRemoveBgBtn" class="btn-primary btn-full" disabled>
+                    <i class="fas fa-magic"></i>
+                    <span>{{img-remove_bg_btn}}</span>
+                  </button>
+                  <div id="imgBgProgress" class="progress-bar-container" style="display: none;">
+                    <div class="progress-bar" id="imgBgProgressBar"></div>
+                    <span id="imgBgProgressText">0%</span>
+                  </div>
+                </div>
+
+              <div class="option-group">
+                  <label><i class="fas fa-stamp"></i> {{img-remove_watermark}}</label>
+                  <button id="imgWatermarkBtn" class="btn-outline btn-full" disabled>
+                    <i class="fas fa-vector-square"></i>
+                    <span>{{img-watermark_select}}</span>
+                  </button>
+                </div>
               </div>
             </div>
           </div>
+        </div>
 
-          <div id="imgEditorLayout" class="img-editor-layout" style="display: none;">
-            <div class="img-gallery" id="imgGallery">
-              <div class="mini-drop-zone" id="imgMiniDropZone">
-                <i class="fas fa-plus"></i>
-                <span id="imgCountBadge">0</span>
+        <div id="imgPdfView" class="img-view" style="display: none;">
+          <div class="content-header">
+            <h2>{{img-tab_pdf}}</h2>
+            <p>{{img-pdf_description}}</p>
+          </div>
+
+          <div class="img-pdf-container">
+            <div class="img-pdf-upload-zone" id="imgPdfDropZone">
+              <div class="upload-zone" tabindex="0" role="button">
+                <div class="upload-content">
+                  <div class="upload-icon-stack">
+                    <i class="fas fa-cloud-arrow-up main-icon"></i>
+                    <i class="fas fa-images sub-icon"></i>
+                  </div>
+                  <div class="upload-text">
+                    <h3>{{img-upload_title}}</h3>
+                    <p>{{img-upload_desc}}</p>
+                  </div>
+                  <input id="imgPdfFileInput" type="file" accept="image/png,image/jpeg,image/jpg,image/webp,image/gif,image/heic,image/bmp,image/avif" multiple hidden>
+                </div>
               </div>
-              <div id="imgGalleryList"></div>
             </div>
 
-            <div class="img-preview-area">
-              <div class="mini-drop-zone-compact" id="imgCompactDropZone">
-                <i class="fas fa-plus"></i>
-                <span>{{img-add_more}}</span>
-              </div>
-              <div class="img-preview-container" id="imgPreviewContainer">
-                <img id="imgPreview" src="" alt="Preview">
-                <div class="img-preview-empty">{{img-select_image}}</div>
-              </div>
-              <div class="img-preview-actions">
-                <button id="imgDownloadBtn" class="btn-primary" disabled>
-                  <i class="fas fa-download"></i>
-                  <span>{{img-download}}</span>
+            <div class="img-pdf-section">
+              <div class="img-pdf-grid" id="imgPdfGrid"></div>
+              
+              <div class="img-pdf-controls">
+                <div class="option-group">
+                  <label><i class="fas fa-signature"></i> {{pdf-filename_label}}</label>
+                  <div class="input-with-icon">
+                    <input id="imgPdfFilename" type="text" placeholder="{{pdf-filename_placeholder}}" value="documento">
+                    <span class="extension-tag">.pdf</span>
+                  </div>
+                </div>
+
+                <div class="option-group">
+                  <label><i class="fas fa-expand"></i> {{pdf-fit_label}}</label>
+                  <div class="toggle-selector pdf-toggle">
+                    <label class="toggle-option">
+                      <input type="radio" name="imgPdfFormat" id="imgPdfA4" value="a4">
+                      <div class="option-content">
+                        <i class="fas fa-file-lines"></i>
+                        <span>{{pdf-size_a4}}</span>
+                      </div>
+                    </label>
+                    <label class="toggle-option">
+                      <input type="radio" name="imgPdfFormat" id="imgPdfUniform" value="uniform" checked>
+                      <div class="option-content">
+                        <i class="fas fa-border-all"></i>
+                        <span>{{pdf-uniform}}</span>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+
+                <button id="imgConvertPdfBtn" class="btn-primary btn-full" disabled>
+                  <i class="fas fa-file-export"></i>
+                  <span>{{pdf-generate}}</span>
                 </button>
-                <button id="imgDownloadAllBtn" class="btn-outline">
-                  <i class="fas fa-download"></i>
-                  <span>{{img-download_all}}</span>
-                </button>
-                <button id="imgClearAllBtn" class="btn-outline btn-danger">
+                
+                <button id="imgPdfClearAllBtn" class="btn-outline btn-danger btn-full" style="margin-top: 10px;">
                   <i class="fas fa-trash"></i>
                   <span>{{img-clear_all}}</span>
                 </button>
               </div>
             </div>
-
-            <div class="img-options-panel" id="imgOptionsPanel">
-              <div class="option-group">
-                <label><i class="fas fa-file-image"></i> {{img-format}}</label>
-                <select id="imgFormatSelect" class="modern-select">
-                  <option value="original">{{img-format_original}}</option>
-                  <option value="png">PNG</option>
-                  <option value="jpeg">JPG</option>
-                  <option value="webp">WebP</option>
-                  <option value="gif">GIF</option>
-                </select>
-              </div>
-
-              <div class="option-group">
-                <label><i class="fas fa-expand"></i> {{img-resize}}</label>
-                <div class="resize-inputs">
-                  <div class="resize-input-group">
-                    <input type="number" id="imgWidthInput" placeholder="{{img-width}}" min="1">
-                    <span>x</span>
-                    <input type="number" id="imgHeightInput" placeholder="{{img-height}}" min="1">
-                  </div>
-                  <label class="checkbox-label">
-                    <input type="checkbox" id="imgKeepAspectCheck" checked>
-                    <i class="fas fa-lock" id="imgAspectLockIcon"></i>
-                    {{img-keep_aspect}}
-                  </label>
-                  <button id="imgApplyResizeBtn" class="btn-outline btn-small">{{img-apply_all}}</button>
-                </div>
-              </div>
-
-              <div class="option-group">
-                <label><i class="fas fa-compress"></i> {{img-compress}}</label>
-                <div class="compress-inputs">
-                  <input type="range" id="imgQualitySlider" min="1" max="100" value="90">
-                  <div class="compress-values">
-                    <span id="imgQualityValue">90%</span>
-                    <input type="number" id="imgTargetSizeInput" placeholder="{{img-target_kb}}" min="1">
-                    <span>KB</span>
-                  </div>
-                  <div id="imgSizeEstimate" class="size-estimate">{{img-original_size}}: <span id="imgOriginalSizeValue">-</span></div>
-                </div>
-              </div>
-
-              <div class="option-group">
-                <label><i class="fas fa-eraser"></i> {{img-remove_bg}}</label>
-                <button id="imgRemoveBgBtn" class="btn-primary btn-full" disabled>
-                  <i class="fas fa-magic"></i>
-                  <span>{{img-remove_bg_btn}}</span>
-                </button>
-                <div id="imgBgProgress" class="progress-bar-container" style="display: none;">
-                  <div class="progress-bar" id="imgBgProgressBar"></div>
-                  <span id="imgBgProgressText">0%</span>
-                </div>
-              </div>
-
-              <div class="option-group">
-                <label><i class="fas fa-stamp"></i> {{img-remove_watermark}}</label>
-                <button id="imgWatermarkBtn" class="btn-outline btn-full" disabled>
-                  <i class="fas fa-vector-square"></i>
-                  <span>{{img-watermark_select}}</span>
-                </button>
-              </div>
-            </div>
           </div>
         </div>
-
-        <div id="imgPreviewGrid" class="image-grid-modern"></div>
       </section>
 
       <section id="converter" class="tab-content">
@@ -310,7 +462,7 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
-  <script type="module" src="https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.5.1/dist/index.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.7.0/dist/index.js" onerror="console.warn('Background removal library failed to load')"></script>
   <script type="module" src="assets/js/i18n-loader.js"></script>
   <script type="module" src="assets/js/app.js"></script>
 </body>

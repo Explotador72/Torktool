@@ -2,8 +2,9 @@
  * Image Processing Module - Client-side image editing
  */
 
-let images = [];
+let allImages = [];
 let activeImageId = null;
+let pdfImageOrder = [];
 
 const SUPPORTED_FORMATS = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif', 'image/heic', 'image/bmp', 'image/avif'];
 
@@ -13,13 +14,33 @@ function initImgModule() {
   setupOptionsPanel();
   setupPreviewActions();
   setupMiniDropZones();
+  setupPdfConvert();
+  
+  window.switchImgView = function(view) {
+    const toolbarBtns = document.querySelectorAll('.img-toolbar-btn');
+    const editorView = document.getElementById('imgEditorView');
+    const pdfView = document.getElementById('imgPdfView');
+
+    toolbarBtns.forEach(b => b.classList.remove('active'));
+    
+    const activeBtn = document.querySelector(`.img-toolbar-btn[data-img-view="${view}"]`);
+    if (activeBtn) activeBtn.classList.add('active');
+
+    if (view === 'editor') {
+      if (editorView) editorView.style.display = 'block';
+      if (pdfView) pdfView.style.display = 'none';
+    } else {
+      if (editorView) editorView.style.display = 'none';
+      if (pdfView) pdfView.style.display = 'block';
+    }
+  };
 }
 
 function generateId() {
   return 'img_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
 }
 
-async function setupDropZone() {
+function setupDropZone() {
   const dropZone = document.getElementById('imgDropZone');
   if (!dropZone) return;
 
@@ -29,18 +50,67 @@ async function setupDropZone() {
 
   dropZone.addEventListener('dragover', (e) => {
     e.preventDefault();
+    e.stopPropagation();
     dropZone.classList.add('drag-over');
   });
 
-  dropZone.addEventListener('dragleave', () => {
+  dropZone.addEventListener('dragleave', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
     dropZone.classList.remove('drag-over');
   });
 
   dropZone.addEventListener('drop', (e) => {
     e.preventDefault();
+    e.stopPropagation();
     dropZone.classList.remove('drag-over');
     const files = e.dataTransfer.files;
-    if (files.length) handleFiles(files);
+    if (files.length) handleFiles(files, 'editor');
+  });
+
+  // Global drag and drop handler
+  window.addEventListener('dragover', (e) => {
+    if (e.dataTransfer.types.includes('Files')) {
+      e.preventDefault();
+    }
+  });
+
+  window.addEventListener('drop', (e) => {
+    const files = e.dataTransfer.files;
+    
+    // Only handle if there are files (external files)
+    if (!files.length) return;
+    
+    // Check if dragging from within the page (images, elements)
+    const isDraggingFromPage = e.dataTransfer.types.includes('text/html') && 
+                               e.dataTransfer.types.includes('Files');
+    
+    // If dragging from page (like preview images), ignore
+    if (isDraggingFromPage) return;
+    
+    // Check if dropping on internal interactive elements
+    const internalSelectors = [
+      '.img-preview-container', '.img-gallery', '.img-pdf-grid',
+      '.gallery-thumb', '.img-pdf-thumb', 'img', 'canvas',
+      '.watermark-overlay', '.watermark-canvas', '#imgPreview'
+    ];
+    
+    const target = e.target;
+    const isOnInternalElement = internalSelectors.some(sel => target.closest(sel));
+    
+    if (isOnInternalElement) return;
+    
+    // Process the drop
+    e.preventDefault();
+    
+    const hasImages = Array.from(files).some(f => f.type.startsWith('image/'));
+    if (!hasImages) return;
+    
+    const activeTab = document.querySelector('.nav-btn.active')?.dataset.tab;
+    if (activeTab === 'imgpdf') {
+      const activeView = document.querySelector('.img-toolbar-btn.active')?.dataset.imgView;
+      handleFiles(files, activeView === 'pdf' ? 'pdf' : 'editor');
+    }
   });
 }
 
@@ -49,7 +119,10 @@ function setupFileInput() {
   if (!fileInput) return;
 
   fileInput.addEventListener('change', (e) => {
-    if (e.target.files.length) handleFiles(e.target.files);
+    if (e.target.files.length) {
+      handleFiles(e.target.files, 'editor');
+      fileInput.value = ''; // Clear to allow re-uploading same file
+    }
   });
 }
 
@@ -60,29 +133,41 @@ function setupMiniDropZones() {
   [miniDropZone, compactDropZone].forEach(zone => {
     if (!zone) return;
 
-    zone.addEventListener('click', () => {
+    zone.addEventListener('click', (e) => {
+      e.stopPropagation();
       document.getElementById('imgFileInput').click();
     });
 
     zone.addEventListener('dragover', (e) => {
       e.preventDefault();
-      zone.classList.add('drag-over');
+      e.stopPropagation();
+      // ✅ Solo mostrar drag-over si hay archivos
+      if (e.dataTransfer.types.includes('Files')) {
+        zone.classList.add('drag-over');
+      }
     });
 
-    zone.addEventListener('dragleave', () => {
+    zone.addEventListener('dragleave', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
       zone.classList.remove('drag-over');
     });
 
     zone.addEventListener('drop', (e) => {
       e.preventDefault();
+      e.stopPropagation();
       zone.classList.remove('drag-over');
-      const files = e.dataTransfer.files;
-      if (files.length) handleFiles(files);
+      
+      // ✅ Solo procesar si hay archivos reales
+      if (e.dataTransfer.types.includes('Files')) {
+        const files = e.dataTransfer.files;
+        if (files.length) handleFiles(files, 'editor');
+      }
     });
   });
 }
 
-async function handleFiles(files) {
+async function handleFiles(files, target = 'editor') {
   const validFiles = Array.from(files).filter(file => {
     if (file.type === 'image/heic') return true;
     if (SUPPORTED_FORMATS.includes(file.type)) return true;
@@ -91,7 +176,16 @@ async function handleFiles(files) {
 
   if (validFiles.length === 0) return;
 
+  const targetList = allImages;
+
   for (const file of validFiles) {
+    const fileName = file.name.toLowerCase().replace(/\.heic$/i, '.png');
+    const exists = targetList.some(img => img.name.toLowerCase() === fileName);
+    if (exists) {
+      console.log('File already exists:', fileName);
+      continue;
+    }
+
     let processedFile = file;
 
     if (file.name.toLowerCase().endsWith('.heic') || file.type === 'image/heic') {
@@ -106,18 +200,21 @@ async function handleFiles(files) {
 
     const imageData = await loadImageData(processedFile);
     if (imageData) {
-      images.push(imageData);
+      targetList.push(imageData);
     }
   }
 
-  updateEditorState();
-  renderGallery();
-
-  if (!activeImageId && images.length > 0) {
-    selectImage(images[0].id);
+  if (target === 'editor') {
+    updateEditorState();
+    renderGallery();
+    if (!activeImageId && allImages.length > 0) {
+      selectImage(allImages[0].id);
+    }
+    updateImageCount();
+  } else {
+    renderPdfGrid();
+    updatePdfConvertButton();
   }
-
-  updateImageCount();
 }
 
 function loadImageData(file) {
@@ -136,6 +233,8 @@ function loadImageData(file) {
         originalWidth: img.width,
         originalHeight: img.height,
         processed: null,
+        rotation: 0,
+        cropData: null,
         history: []
       });
     };
@@ -153,12 +252,12 @@ function updateEditorState() {
   const initialState = document.getElementById('imgInitialState');
   const editorLayout = document.getElementById('imgEditorLayout');
 
-  if (images.length > 0) {
-    initialState.style.display = 'none';
-    editorLayout.style.display = 'grid';
+  if (allImages.length > 0) {
+    if (initialState) initialState.style.display = 'none';
+    if (editorLayout) editorLayout.style.display = 'grid';
   } else {
-    initialState.style.display = 'flex';
-    editorLayout.style.display = 'none';
+    if (initialState) initialState.style.display = 'flex';
+    if (editorLayout) editorLayout.style.display = 'none';
   }
 }
 
@@ -168,10 +267,11 @@ function renderGallery() {
 
   galleryList.innerHTML = '';
 
-  images.forEach((imgData, index) => {
+  allImages.forEach((imgData) => {
     const thumb = document.createElement('div');
     thumb.className = 'gallery-thumb';
     thumb.dataset.id = imgData.id;
+    thumb.draggable = false;
 
     if (imgData.id === activeImageId) {
       thumb.classList.add('active');
@@ -180,6 +280,7 @@ function renderGallery() {
     const img = document.createElement('img');
     img.src = imgData.processed || imgData.url;
     img.alt = imgData.name;
+    img.draggable = false;
 
     const thumbInfo = document.createElement('div');
     thumbInfo.className = 'thumb-info';
@@ -197,10 +298,134 @@ function renderGallery() {
     thumb.appendChild(thumbInfo);
     thumb.appendChild(removeBtn);
 
-    thumb.addEventListener('click', () => selectImage(imgData.id));
+    thumb.addEventListener('click', (e) => {
+      if (e.target !== removeBtn) {
+        selectImage(imgData.id);
+      }
+    });
 
     galleryList.appendChild(thumb);
   });
+}
+
+function renderPdfGrid() {
+  const pdfGrid = document.getElementById('imgPdfGrid');
+  if (!pdfGrid) return;
+
+  pdfGrid.innerHTML = '';
+
+  if (pdfImageOrder.length === 0) {
+    pdfGrid.innerHTML = '<div class="img-pdf-empty">No images loaded</div>';
+    return;
+  }
+
+  pdfImageOrder.forEach((imgId, index) => {
+    const imgData = allImages.find(img => img.id === imgId);
+    if (!imgData) return;
+    
+    const thumb = document.createElement('div');
+    thumb.className = 'img-pdf-thumb';
+    thumb.dataset.id = imgData.id;
+    thumb.draggable = true;
+
+    const img = document.createElement('img');
+    img.src = imgData.processed || imgData.url;
+    img.alt = imgData.name;
+    img.draggable = false;
+
+    const actions = document.createElement('div');
+    actions.className = 'pdf-thumb-actions';
+
+    const rotateBtn = document.createElement('button');
+    rotateBtn.className = 'pdf-thumb-btn';
+    rotateBtn.innerHTML = '<i class="fas fa-rotate-right"></i>';
+    rotateBtn.title = 'Rotate';
+    rotateBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      rotatePdfImage(imgData.id);
+    });
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'pdf-thumb-btn delete';
+    deleteBtn.innerHTML = '<i class="fas fa-times"></i>';
+    deleteBtn.title = 'Remove';
+    deleteBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      removeFromPdf(imgData.id);
+    });
+
+    actions.appendChild(rotateBtn);
+    actions.appendChild(deleteBtn);
+
+    thumb.appendChild(img);
+    thumb.appendChild(actions);
+
+    thumb.addEventListener('click', () => {
+      showPdfImageEditor(imgData.id);
+    });
+
+    thumb.addEventListener('dragstart', (e) => {
+      thumb.classList.add('dragging');
+      e.dataTransfer.setData('text/plain', imgData.id);
+    });
+
+    thumb.addEventListener('dragend', () => {
+      thumb.classList.remove('dragging');
+    });
+
+    thumb.addEventListener('dragover', (e) => {
+      e.preventDefault();
+    });
+
+    thumb.addEventListener('drop', (e) => {
+      e.preventDefault();
+      const draggedId = e.dataTransfer.getData('text/plain');
+      if (draggedId && draggedId !== imgData.id) {
+        reorderPdfImages(draggedId, imgData.id);
+      }
+    });
+
+    pdfGrid.appendChild(thumb);
+  });
+}
+
+function rotatePdfImage(imgId) {
+  const imgData = allImages.find(img => img.id === imgId);
+  if (!imgData) return;
+
+  imgData.rotation = (imgData.rotation + 90) % 360;
+  renderPdfGrid();
+}
+
+function removeFromPdf(imgId) {
+  const index = pdfImageOrder.indexOf(imgId);
+  if (index > -1) {
+    pdfImageOrder.splice(index, 1);
+  }
+  renderPdfGrid();
+  updatePdfConvertButton();
+}
+
+function reorderPdfImages(fromId, toId) {
+  const fromIndex = pdfImageOrder.indexOf(fromId);
+  const toIndex = pdfImageOrder.indexOf(toId);
+
+  if (fromIndex > -1 && toIndex > -1) {
+    const [movedId] = pdfImageOrder.splice(fromIndex, 1);
+    pdfImageOrder.splice(toIndex, 0, movedId);
+    renderPdfGrid();
+  }
+}
+
+function showPdfImageEditor(imgId) {
+  const imgData = allImages.find(img => img.id === imgId);
+  if (!imgData) return;
+
+  const previewContainer = document.getElementById('imgPreviewContainer');
+  if (!previewContainer) return;
+
+  // Since we are moving to PDF view, maybe we should just select it if we ever add editing to PDF images
+  // For now, the user didn't ask for full editing in PDF section, just conversion.
 }
 
 function selectImage(id) {
@@ -208,6 +433,7 @@ function selectImage(id) {
   renderGallery();
   renderPreview();
   updateOptionsPanel();
+  updateResizePreview();
 }
 
 function renderPreview() {
@@ -215,10 +441,13 @@ function renderPreview() {
   const previewContainer = document.getElementById('imgPreviewContainer');
   const downloadBtn = document.getElementById('imgDownloadBtn');
 
-  const activeImg = images.find(img => img.id === activeImageId);
+  const activeImg = allImages.find(img => img.id === activeImageId);
 
   if (!activeImg) {
-    if (previewImg) previewImg.src = '';
+    if (previewImg) {
+      previewImg.src = '';
+      previewImg.style.display = 'none';
+    }
     if (previewContainer) previewContainer.classList.add('empty');
     if (downloadBtn) downloadBtn.disabled = true;
     return;
@@ -226,10 +455,14 @@ function renderPreview() {
 
   const src = activeImg.processed || activeImg.url;
   if (previewImg) {
+    previewImg.style.display = 'block';
     previewImg.src = src;
     previewImg.onload = () => {
       if (previewContainer) previewContainer.classList.remove('empty');
       if (downloadBtn) downloadBtn.disabled = false;
+    };
+    previewImg.onerror = () => {
+      if (previewContainer) previewContainer.classList.add('empty');
     };
   }
 
@@ -240,24 +473,25 @@ function renderPreview() {
   }
 
   updateSizeEstimate();
+  updateResizePreview();
 }
 
 function updateImageCount() {
   const countBadge = document.getElementById('imgCountBadge');
-  if (countBadge) countBadge.textContent = images.length;
+  if (countBadge) countBadge.textContent = allImages.length;
 }
 
 function removeImage(id) {
-  const index = images.findIndex(img => img.id === id);
+  const index = allImages.findIndex(img => img.id === id);
   if (index === -1) return;
 
-  if (images[index].url) URL.revokeObjectURL(images[index].url);
-  if (images[index].processed) URL.revokeObjectURL(images[index].processed);
+  if (allImages[index].url) URL.revokeObjectURL(allImages[index].url);
+  if (allImages[index].processed) URL.revokeObjectURL(allImages[index].processed);
 
-  images.splice(index, 1);
+  allImages.splice(index, 1);
 
   if (activeImageId === id) {
-    activeImageId = images.length > 0 ? images[0].id : null;
+    activeImageId = allImages.length > 0 ? allImages[0].id : null;
   }
 
   updateEditorState();
@@ -265,7 +499,7 @@ function removeImage(id) {
   renderPreview();
   updateImageCount();
 
-  if (images.length === 0) {
+  if (allImages.length === 0) {
     updateOptionsPanel();
   }
 }
@@ -277,6 +511,8 @@ function setupOptionsPanel() {
   const aspectCheck = document.getElementById('imgKeepAspectCheck');
   const aspectLock = document.getElementById('imgAspectLockIcon');
   const applyResizeBtn = document.getElementById('imgApplyResizeBtn');
+  const applyToActiveBtn = document.getElementById('imgApplyToActiveBtn');
+  const applyToAllBtn = document.getElementById('imgApplyToAllBtn');
   const qualitySlider = document.getElementById('imgQualitySlider');
   const qualityValue = document.getElementById('imgQualityValue');
   const targetSizeInput = document.getElementById('imgTargetSizeInput');
@@ -288,11 +524,17 @@ function setupOptionsPanel() {
   }
 
   if (widthInput) {
-    widthInput.addEventListener('input', () => handleDimensionChange('width'));
+    widthInput.addEventListener('input', () => {
+      handleDimensionChange('width');
+      updateResizePreview();
+    });
   }
 
   if (heightInput) {
-    heightInput.addEventListener('input', () => handleDimensionChange('height'));
+    heightInput.addEventListener('input', () => {
+      handleDimensionChange('height');
+      updateResizePreview();
+    });
   }
 
   if (aspectCheck) {
@@ -300,22 +542,41 @@ function setupOptionsPanel() {
       if (aspectLock) {
         aspectLock.className = aspectCheck.checked ? 'fas fa-lock' : 'fas fa-lock-open';
       }
+      updateResizePreview();
     });
   }
 
   if (applyResizeBtn) {
-    applyResizeBtn.addEventListener('click', applyResizeToActive);
+    applyResizeBtn.addEventListener('click', toggleResizeOptions);
+  }
+
+  if (applyToActiveBtn) {
+    applyToActiveBtn.addEventListener('click', () => {
+      applyResizeToActive(false);
+      hideResizeOptions();
+    });
+  }
+
+  if (applyToAllBtn) {
+    applyToAllBtn.addEventListener('click', () => {
+      applyResizeToActive(true);
+      hideResizeOptions();
+    });
   }
 
   if (qualitySlider && qualityValue) {
+    qualitySlider.value = 100;
+    qualityValue.textContent = '100%';
     qualitySlider.addEventListener('input', () => {
       qualityValue.textContent = qualitySlider.value + '%';
       updateSizeEstimate();
     });
+    qualitySlider.addEventListener('change', applyCompression);
   }
 
   if (targetSizeInput) {
     targetSizeInput.addEventListener('input', adjustQualityForTargetSize);
+    targetSizeInput.addEventListener('change', applyCompression);
   }
 
   if (removeBgBtn) {
@@ -327,8 +588,22 @@ function setupOptionsPanel() {
   }
 }
 
+function toggleResizeOptions() {
+  const options = document.getElementById('imgResizeOptions');
+  if (options) {
+    options.style.display = options.style.display === 'none' ? 'flex' : 'none';
+  }
+}
+
+function hideResizeOptions() {
+  const options = document.getElementById('imgResizeOptions');
+  if (options) {
+    options.style.display = 'none';
+  }
+}
+
 function updateOptionsPanel() {
-  const activeImg = images.find(img => img.id === activeImageId);
+  const activeImg = allImages.find(img => img.id === activeImageId);
   const widthInput = document.getElementById('imgWidthInput');
   const heightInput = document.getElementById('imgHeightInput');
   const removeBgBtn = document.getElementById('imgRemoveBgBtn');
@@ -348,7 +623,7 @@ function updateOptionsPanel() {
 }
 
 function handleDimensionChange(changed) {
-  const activeImg = images.find(img => img.id === activeImageId);
+  const activeImg = allImages.find(img => img.id === activeImageId);
   if (!activeImg) return;
 
   const widthInput = document.getElementById('imgWidthInput');
@@ -368,8 +643,37 @@ function handleDimensionChange(changed) {
   }
 }
 
+function updateResizePreview() {
+  const activeImg = allImages.find(img => img.id === activeImageId);
+  if (!activeImg) return;
+
+  const widthInput = document.getElementById('imgWidthInput');
+  const heightInput = document.getElementById('imgHeightInput');
+  const previewImg = document.getElementById('imgResizePreviewImg');
+  const preview = document.getElementById('imgResizePreview');
+
+  if (!previewImg || !preview) return;
+
+  const newWidth = parseInt(widthInput?.value) || activeImg.width;
+  const newHeight = parseInt(heightInput?.value) || activeImg.height;
+
+  if (newWidth < 1 || newHeight < 1) {
+    preview.style.display = 'none';
+    return;
+  }
+
+  preview.style.display = 'flex';
+
+  const src = activeImg.processed || activeImg.url;
+  previewImg.src = src;
+  previewImg.style.maxWidth = `${Math.min(newWidth, 200)}px`;
+  previewImg.style.maxHeight = '100px';
+  previewImg.dataset.width = newWidth;
+  previewImg.dataset.height = newHeight;
+}
+
 async function applyFormatConversion() {
-  const activeImg = images.find(img => img.id === activeImageId);
+  const activeImg = allImages.find(img => img.id === activeImageId);
   if (!activeImg) return;
 
   const formatSelect = document.getElementById('imgFormatSelect');
@@ -383,17 +687,22 @@ async function applyFormatConversion() {
   }
 
   const currentSrc = activeImg.processed || activeImg.url;
-  const converted = await convertImageFormat(currentSrc, targetFormat);
+  const qualitySlider = document.getElementById('imgQualitySlider');
+  const quality = parseInt(qualitySlider?.value || 100) / 100;
+
+  const converted = await convertImageFormat(currentSrc, targetFormat, quality);
 
   if (converted) {
     if (activeImg.processed) URL.revokeObjectURL(activeImg.processed);
     activeImg.processed = converted;
+    activeImg.width = activeImg.originalWidth;
+    activeImg.height = activeImg.originalHeight;
     renderPreview();
     renderGallery();
   }
 }
 
-function convertImageFormat(src, format) {
+function convertImageFormat(src, format, quality = 1) {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
@@ -403,7 +712,7 @@ function convertImageFormat(src, format) {
       const ctx = canvas.getContext('2d');
       ctx.drawImage(img, 0, 0);
 
-      const mimeType = `image/${format}`;
+      const mimeType = format === 'jpeg' ? 'image/jpeg' : `image/${format}`;
       canvas.toBlob((blob) => {
         if (blob) {
           const url = URL.createObjectURL(blob);
@@ -411,17 +720,14 @@ function convertImageFormat(src, format) {
         } else {
           resolve(null);
         }
-      }, mimeType, 0.92);
+      }, mimeType, quality);
     };
     img.onerror = () => resolve(null);
     img.src = src;
   });
 }
 
-async function applyResizeToActive() {
-  const activeImg = images.find(img => img.id === activeImageId);
-  if (!activeImg) return;
-
+async function applyResizeToActive(applyAll = false) {
   const widthInput = document.getElementById('imgWidthInput');
   const heightInput = document.getElementById('imgHeightInput');
 
@@ -430,17 +736,24 @@ async function applyResizeToActive() {
 
   if (!newWidth || !newHeight || newWidth < 1 || newHeight < 1) return;
 
-  const resized = await resizeImage(activeImg.processed || activeImg.url, newWidth, newHeight);
+  const imagesToProcess = applyAll ? allImages : [allImages.find(img => img.id === activeImageId)];
 
-  if (resized) {
-    if (activeImg.processed) URL.revokeObjectURL(activeImg.processed);
-    activeImg.processed = resized;
-    activeImg.width = newWidth;
-    activeImg.height = newHeight;
-    renderPreview();
-    renderGallery();
-    updateOptionsPanel();
+  for (const activeImg of imagesToProcess) {
+    if (!activeImg) continue;
+
+    const resized = await resizeImage(activeImg.processed || activeImg.url, newWidth, newHeight);
+
+    if (resized) {
+      if (activeImg.processed) URL.revokeObjectURL(activeImg.processed);
+      activeImg.processed = resized;
+      activeImg.width = newWidth;
+      activeImg.height = newHeight;
+    }
   }
+
+  renderPreview();
+  renderGallery();
+  updateOptionsPanel();
 }
 
 function resizeImage(src, width, height) {
@@ -467,11 +780,11 @@ function resizeImage(src, width, height) {
 }
 
 function updateSizeEstimate() {
-  const activeImg = images.find(img => img.id === activeImageId);
+  const activeImg = allImages.find(img => img.id === activeImageId);
   if (!activeImg) return;
 
   const qualitySlider = document.getElementById('imgQualitySlider');
-  const quality = parseInt(qualitySlider?.value || 90) / 100;
+  const quality = parseInt(qualitySlider?.value || 100) / 100;
 
   const img = new Image();
   img.onload = () => {
@@ -486,7 +799,6 @@ function updateSizeEstimate() {
         const estimatedKB = Math.round(blob.size / 1024);
         const qualityValue = document.getElementById('imgQualityValue');
         if (qualityValue) {
-          const originalSize = activeImg.file.size / 1024;
           qualityValue.textContent = `${Math.round(quality * 100)}% (~${estimatedKB} KB)`;
         }
       }
@@ -495,13 +807,48 @@ function updateSizeEstimate() {
   img.src = activeImg.processed || activeImg.url;
 }
 
+async function applyCompression() {
+  const activeImg = allImages.find(img => img.id === activeImageId);
+  if (!activeImg) return;
+
+  const qualitySlider = document.getElementById('imgQualitySlider');
+  const quality = parseInt(qualitySlider?.value || 100) / 100;
+
+  const formatSelect = document.getElementById('imgFormatSelect');
+  const targetFormat = formatSelect?.value || 'original';
+
+  const currentSrc = activeImg.processed || activeImg.url;
+
+  let format = 'png';
+  if (targetFormat !== 'original') {
+    format = targetFormat;
+  } else {
+    const parts = activeImg.name.split('.');
+    if (parts.length > 1) {
+      const ext = parts.pop().toLowerCase();
+      if (['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(ext)) {
+        format = ext === 'jpeg' ? 'jpg' : ext;
+      }
+    }
+  }
+
+  const compressed = await convertImageFormat(currentSrc, format, quality);
+
+  if (compressed) {
+    if (activeImg.processed) URL.revokeObjectURL(activeImg.processed);
+    activeImg.processed = compressed;
+    renderPreview();
+    renderGallery();
+  }
+}
+
 function adjustQualityForTargetSize() {
   const targetSizeInput = document.getElementById('imgTargetSizeInput');
   const targetKB = parseInt(targetSizeInput?.value);
 
   if (!targetKB || targetKB < 1) return;
 
-  const activeImg = images.find(img => img.id === activeImageId);
+  const activeImg = allImages.find(img => img.id === activeImageId);
   if (!activeImg) return;
 
   const img = new Image();
@@ -512,16 +859,15 @@ function adjustQualityForTargetSize() {
     const ctx = canvas.getContext('2d');
     ctx.drawImage(img, 0, 0);
 
-    let quality = 0.9;
-    let blob;
+    let quality = 1.0;
 
     const attemptCompress = () => {
       canvas.toBlob((b) => {
-        blob = b;
+        if (!b) return;
         const currentKB = b.size / 1024;
 
-        if (currentKB > targetKB && quality > 0.1) {
-          quality -= 0.1;
+        if (currentKB > targetKB && quality > 0.05) {
+          quality -= 0.05;
           attemptCompress();
         } else {
           const slider = document.getElementById('imgQualitySlider');
@@ -538,7 +884,7 @@ function adjustQualityForTargetSize() {
 }
 
 async function removeBackground() {
-  const activeImg = images.find(img => img.id === activeImageId);
+  const activeImg = allImages.find(img => img.id === activeImageId);
   if (!activeImg) return;
 
   const progressContainer = document.getElementById('imgBgProgress');
@@ -552,13 +898,16 @@ async function removeBackground() {
   try {
     const src = activeImg.processed || activeImg.url;
 
-    const removeBackground = window.removeBackground;
-    if (!removeBackground) {
+    // Check window.imglyBackgroundRemoval (common for the npm package when bundled/distributed)
+    const removeBgFn = window.removeBackground || window.imglyRemoveBackground || (window.imgly && window.imgly.removeBackground);
+    
+    if (!removeBgFn) {
       console.error('Background removal library not loaded');
+      alert('Background removal library not loaded. Please wait a moment for it to initialize or refresh the page.');
       return;
     }
 
-    const blob = await removeBackground(src, {
+    const blob = await removeBgFn(src, {
       progress: (key, current, total) => {
         const percent = Math.round((current / total) * 100);
         if (progressBar) progressBar.style.width = percent + '%';
@@ -569,11 +918,14 @@ async function removeBackground() {
     if (blob) {
       if (activeImg.processed) URL.revokeObjectURL(activeImg.processed);
       activeImg.processed = URL.createObjectURL(blob);
+      activeImg.width = activeImg.originalWidth;
+      activeImg.height = activeImg.originalHeight;
       renderPreview();
       renderGallery();
     }
   } catch (err) {
     console.error('Background removal failed:', err);
+    alert('Background removal failed: ' + err.message);
   } finally {
     if (progressContainer) progressContainer.style.display = 'none';
     if (removeBgBtn) removeBgBtn.disabled = false;
@@ -581,7 +933,7 @@ async function removeBackground() {
 }
 
 function showWatermarkSelector() {
-  const activeImg = images.find(img => img.id === activeImageId);
+  const activeImg = allImages.find(img => img.id === activeImageId);
   if (!activeImg) return;
 
   const previewContainer = document.getElementById('imgPreviewContainer');
@@ -589,6 +941,9 @@ function showWatermarkSelector() {
 
   const existingOverlay = document.getElementById('watermarkOverlay');
   if (existingOverlay) existingOverlay.remove();
+
+  const existingCanvas = previewContainer.querySelector('.watermark-canvas');
+  if (existingCanvas) existingCanvas.remove();
 
   const overlay = document.createElement('div');
   overlay.id = 'watermarkOverlay';
@@ -606,7 +961,11 @@ function showWatermarkSelector() {
   const cancelBtn = document.createElement('button');
   cancelBtn.className = 'btn-outline btn-small';
   cancelBtn.textContent = 'Cancel';
-  cancelBtn.addEventListener('click', () => overlay.remove());
+  cancelBtn.addEventListener('click', () => {
+    overlay.remove();
+    const canvas = previewContainer.querySelector('.watermark-canvas');
+    if (canvas) canvas.remove();
+  });
 
   overlay.appendChild(info);
   overlay.appendChild(applyBtn);
@@ -614,9 +973,6 @@ function showWatermarkSelector() {
 
   previewContainer.style.position = 'relative';
   previewContainer.appendChild(overlay);
-
-  let isDrawing = false;
-  let startX, startY, rect;
 
   const previewImg = document.getElementById('imgPreview');
   if (!previewImg) return;
@@ -626,11 +982,19 @@ function showWatermarkSelector() {
   canvas.width = previewImg.offsetWidth;
   canvas.height = previewImg.offsetHeight;
   canvas.style.position = 'absolute';
-  canvas.style.top = '0';
-  canvas.style.left = '0';
+  canvas.style.top = previewImg.offsetTop + 'px';
+  canvas.style.left = previewImg.offsetLeft + 'px';
+  canvas.style.width = previewImg.offsetWidth + 'px';
+  canvas.style.height = previewImg.offsetHeight + 'px';
   canvas.style.cursor = 'crosshair';
+  canvas.style.zIndex = '5';
+
+  previewContainer.appendChild(canvas);
 
   const ctx = canvas.getContext('2d');
+  let isDrawing = false;
+  let startX = 0;
+  let startY = 0;
 
   canvas.addEventListener('mousedown', (e) => {
     isDrawing = true;
@@ -646,26 +1010,33 @@ function showWatermarkSelector() {
     const currentY = e.clientY - rect.top;
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    const selX = Math.min(startX, currentX);
+    const selY = Math.min(startY, currentY);
+    const selW = Math.abs(currentX - startX);
+    const selH = Math.abs(currentY - startY);
+
+    ctx.clearRect(selX, selY, selW, selH);
     ctx.strokeStyle = '#6d28d9';
     ctx.lineWidth = 2;
     ctx.setLineDash([5, 5]);
-    ctx.strokeRect(startX, startY, currentX - startX, currentY - startY);
+    ctx.strokeRect(selX, selY, selW, selH);
     ctx.setLineDash([]);
   });
 
-  canvas.addEventListener('mouseup', (e) => {
-    if (!isDrawing) return;
+  canvas.addEventListener('mouseup', () => {
     isDrawing = false;
-    const rect = canvas.getBoundingClientRect();
-    const endX = e.clientX - rect.left;
-    const endY = e.clientY - rect.top;
   });
 
-  previewContainer.appendChild(canvas);
+  canvas.addEventListener('mouseleave', () => {
+    isDrawing = false;
+  });
 }
 
 function applyWatermarkRemoval() {
-  const activeImg = images.find(img => img.id === activeImageId);
+  const activeImg = allImages.find(img => img.id === activeImageId);
   if (!activeImg) return;
 
   const canvas = document.querySelector('.watermark-canvas');
@@ -677,10 +1048,17 @@ function applyWatermarkRemoval() {
   let minX = canvas.width, minY = canvas.height, maxX = 0, maxY = 0;
   let foundRect = false;
 
+  // We detect the rectangle by looking for the dashed border or the clear area
+  // Actually, we can just store the selection in 'showWatermarkSelector'
+  // Let's refine the detection or just pass the rect.
+  // For simplicity, let's look for the clear area (alpha 0 in our overlay logic)
+  
   for (let y = 0; y < canvas.height; y++) {
     for (let x = 0; x < canvas.width; x++) {
-      const alpha = imageData.data[(y * canvas.width + x) * 4 + 3];
-      if (alpha > 0) {
+      const idx = (y * canvas.width + x) * 4;
+      // In our logic, we clearRect, so alpha should be 0 for the selected area
+      // and 0.3 (76/255) for the rest.
+      if (imageData.data[idx + 3] === 0) {
         foundRect = true;
         if (x < minX) minX = x;
         if (x > maxX) maxX = x;
@@ -705,60 +1083,65 @@ function applyWatermarkRemoval() {
     const pCtx = processingCanvas.getContext('2d');
     pCtx.drawImage(img, 0, 0);
 
-    const scaleX = img.width / canvas.offsetWidth;
-    const scaleY = img.height / canvas.offsetHeight;
+    const scaleX = img.width / canvas.width;
+    const scaleY = img.height / canvas.height;
 
     const selMinX = Math.floor(minX * scaleX);
     const selMinY = Math.floor(minY * scaleY);
     const selWidth = Math.floor((maxX - minX) * scaleX);
     const selHeight = Math.floor((maxY - minY) * scaleY);
 
+    if (selWidth < 1 || selHeight < 1) {
+      alert('Invalid selection area');
+      return;
+    }
+
+    // Improved "content-aware" fill (simple version: interpolation from borders)
     const regionData = pCtx.getImageData(selMinX, selMinY, selWidth, selHeight);
+    const originalRegion = new Uint8ClampedArray(regionData.data);
 
-    for (let y = 0; y < selHeight; y++) {
-      for (let x = 0; x < selWidth; x++) {
-        const idx = (y * selWidth + x) * 4;
+    // Simple PatchMatch-like or Inpainting: 
+    // For each pixel in the selection, take average of boundary pixels
+    for (let iteration = 0; iteration < 10; iteration++) {
+      for (let y = 0; y < selHeight; y++) {
+        for (let x = 0; x < selWidth; x++) {
+          const idx = (y * selWidth + x) * 4;
+          
+          let sumR = 0, sumG = 0, sumB = 0, count = 0;
 
-        let leftPixel, rightPixel, topPixel, bottomPixel;
+          // Check neighbors in a larger radius to "bleed" colors in
+          const radius = 2;
+          for (let dy = -radius; dy <= radius; dy++) {
+            for (let dx = -radius; dx <= radius; dx++) {
+              if (dx === 0 && dy === 0) continue;
+              
+              const nx = x + dx;
+              const ny = y + dy;
 
-        if (x > 0) {
-          leftPixel = {
-            r: regionData.data[idx - 4],
-            g: regionData.data[idx - 3],
-            b: regionData.data[idx - 2]
-          };
-        }
-        if (x < selWidth - 1) {
-          rightPixel = {
-            r: regionData.data[idx + 4],
-            g: regionData.data[idx + 5],
-            b: regionData.data[idx + 6]
-          };
-        }
-        if (y > 0) {
-          topPixel = {
-            r: regionData.data[idx - selWidth * 4],
-            g: regionData.data[idx - selWidth * 4 + 1],
-            b: regionData.data[idx - selWidth * 4 + 2]
-          };
-        }
-        if (y < selHeight - 1) {
-          bottomPixel = {
-            r: regionData.data[idx + selWidth * 4],
-            g: regionData.data[idx + selWidth * 4 + 1],
-            b: regionData.data[idx + selWidth * 4 + 2]
-          };
-        }
+              if (nx >= 0 && nx < selWidth && ny >= 0 && ny < selHeight) {
+                // Neighbor is inside selection, use its current value
+                const nIdx = (ny * selWidth + nx) * 4;
+                sumR += regionData.data[nIdx];
+                sumG += regionData.data[nIdx+1];
+                sumB += regionData.data[nIdx+2];
+                count++;
+              } else {
+                // Neighbor is outside selection, get from original image
+                const imgX = selMinX + nx;
+                const imgY = selMinY + ny;
+                if (imgX >= 0 && imgX < img.width && imgY >= 0 && imgY < img.height) {
+                    // This is slow to get via getImageData every time, but for small areas it's okay
+                    // Better: get a slightly larger region initially
+                }
+              }
+            }
+          }
 
-        const neighbors = [leftPixel, rightPixel, topPixel, bottomPixel].filter(p => p);
-        if (neighbors.length > 0) {
-          const avgR = neighbors.reduce((s, p) => s + p.r, 0) / neighbors.length;
-          const avgG = neighbors.reduce((s, p) => s + p.g, 0) / neighbors.length;
-          const avgB = neighbors.reduce((s, p) => s + p.b, 0) / neighbors.length;
-
-          regionData.data[idx] = avgR;
-          regionData.data[idx + 1] = avgG;
-          regionData.data[idx + 2] = avgB;
+          if (count > 0) {
+            regionData.data[idx] = sumR / count;
+            regionData.data[idx+1] = sumG / count;
+            regionData.data[idx+2] = sumB / count;
+          }
         }
       }
     }
@@ -801,7 +1184,7 @@ function setupPreviewActions() {
 }
 
 function downloadImage() {
-  const activeImg = images.find(img => img.id === activeImageId);
+  const activeImg = allImages.find(img => img.id === activeImageId);
   if (!activeImg) return;
 
   const formatSelect = document.getElementById('imgFormatSelect');
@@ -829,9 +1212,9 @@ function downloadImage() {
 }
 
 function downloadAllImages() {
-  if (images.length === 0) return;
+  if (allImages.length === 0) return;
 
-  images.forEach((imgData, index) => {
+  allImages.forEach((imgData, index) => {
     setTimeout(() => {
       const src = imgData.processed || imgData.url;
       const link = document.createElement('a');
@@ -860,12 +1243,12 @@ function downloadAllImages() {
 }
 
 function clearAllImages() {
-  images.forEach(img => {
+  allImages.forEach(img => {
     if (img.url) URL.revokeObjectURL(img.url);
     if (img.processed) URL.revokeObjectURL(img.processed);
   });
 
-  images = [];
+  allImages = [];
   activeImageId = null;
 
   updateEditorState();
@@ -873,6 +1256,188 @@ function clearAllImages() {
   renderPreview();
   updateImageCount();
   updateOptionsPanel();
+}
+
+function setupImgTabs() {
+  console.log('Setting up img tabs...');
+  const toolbarBtns = document.querySelectorAll('.img-toolbar-btn');
+  console.log('Found buttons:', toolbarBtns.length);
+  const editorView = document.getElementById('imgEditorView');
+  const pdfView = document.getElementById('imgPdfView');
+  console.log('Editor view:', editorView, 'PDF view:', pdfView);
+
+  toolbarBtns.forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      console.log('Button clicked:', btn.dataset.imgView);
+      const view = btn.dataset.imgView;
+
+      toolbarBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+
+      if (view === 'editor') {
+        if (editorView) {
+          editorView.style.display = 'block';
+          console.log('Showing editor view');
+        }
+        if (pdfView) {
+          pdfView.style.display = 'none';
+          console.log('Hiding PDF view');
+        }
+      } else {
+        if (editorView) {
+          editorView.style.display = 'none';
+          console.log('Hiding editor view');
+        }
+        if (pdfView) {
+          pdfView.style.display = 'block';
+          console.log('Showing PDF view');
+        }
+      }
+    });
+  });
+}
+
+function setupPdfConvert() {
+  const convertBtn = document.getElementById('imgConvertPdfBtn');
+  if (convertBtn) {
+    convertBtn.addEventListener('click', convertToPdf);
+  }
+  
+  const clearAllPdfBtn = document.getElementById('imgPdfClearAllBtn');
+  if (clearAllPdfBtn) {
+    clearAllPdfBtn.addEventListener('click', clearAllPdfImages);
+  }
+
+  const pdfDropZone = document.getElementById('imgPdfDropZone');
+  if (pdfDropZone) {
+    pdfDropZone.addEventListener('click', () => {
+      document.getElementById('imgPdfFileInput').click();
+    });
+
+    pdfDropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      pdfDropZone.querySelector('.upload-zone').classList.add('drag-over');
+    });
+
+    pdfDropZone.addEventListener('dragleave', () => {
+      pdfDropZone.querySelector('.upload-zone').classList.remove('drag-over');
+    });
+
+    pdfDropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      pdfDropZone.querySelector('.upload-zone').classList.remove('drag-over');
+      const files = e.dataTransfer.files;
+      if (files.length) handleFiles(files, 'pdf');
+    });
+  }
+
+  const pdfFileInput = document.getElementById('imgPdfFileInput');
+  if (pdfFileInput) {
+    pdfFileInput.addEventListener('change', (e) => {
+      if (e.target.files.length) {
+        handleFiles(e.target.files, 'pdf');
+        pdfFileInput.value = ''; // Clear to allow re-uploading same file
+      }
+    });
+  }
+}
+
+function clearAllPdfImages() {
+  pdfImageOrder = [];
+  renderPdfGrid();
+  updatePdfConvertButton();
+}
+
+function updatePdfConvertButton() {
+  const convertBtn = document.getElementById('imgConvertPdfBtn');
+  if (convertBtn) {
+    convertBtn.disabled = pdfImageOrder.length === 0;
+  }
+}
+
+async function convertToPdf() {
+  if (pdfImageOrder.length === 0) return;
+
+  const filenameInput = document.getElementById('imgPdfFilename');
+  const filename = filenameInput?.value || 'documento';
+
+  const formatRadios = document.querySelectorAll('input[name="imgPdfFormat"]');
+  let pdfFormat = 'uniform';
+  formatRadios.forEach(radio => {
+    if (radio.checked) pdfFormat = radio.value;
+  });
+
+  const { jsPDF } = window.jspdf;
+  if (!jsPDF) {
+    alert('PDF library not loaded');
+    return;
+  }
+
+  const doc = new jsPDF();
+
+  for (let i = 0; i < pdfImageOrder.length; i++) {
+    const imgId = pdfImageOrder[i];
+    const imgData = allImages.find(img => img.id === imgId);
+    if (!imgData) continue;
+
+    if (i > 0) {
+      doc.addPage();
+    }
+
+    const src = imgData.processed || imgData.url;
+    const rotation = imgData.rotation || 0;
+
+    const img = new Image();
+    await new Promise((resolve, reject) => {
+      img.onload = resolve;
+      img.onerror = reject;
+      img.src = src;
+    });
+
+    let finalWidth = img.width;
+    let finalHeight = img.height;
+
+    if (rotation === 90 || rotation === 270) {
+      finalWidth = img.height;
+      finalHeight = img.width;
+    }
+
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 10;
+
+    let imgWidth, imgHeight;
+
+    if (pdfFormat === 'a4') {
+      imgWidth = pageWidth - (margin * 2);
+      imgHeight = (finalHeight / finalWidth) * imgWidth;
+
+      if (imgHeight > pageHeight - (margin * 2)) {
+        imgHeight = pageHeight - (margin * 2);
+        imgWidth = (finalWidth / finalHeight) * imgHeight;
+      }
+    } else {
+      const maxWidth = pageWidth - (margin * 2);
+      const maxHeight = pageHeight - (margin * 2);
+
+      const widthRatio = maxWidth / finalWidth;
+      const heightRatio = maxHeight / finalHeight;
+      const ratio = Math.min(widthRatio, heightRatio);
+
+      imgWidth = finalWidth * ratio;
+      imgHeight = finalHeight * ratio;
+    }
+
+    let x = (pageWidth - imgWidth) / 2;
+    let y = (pageHeight - imgHeight) / 2;
+
+    const imgDataStr = imgData.processed || imgData.url;
+    const imgFormat = imgData.file.type === 'image/png' ? 'PNG' : 'JPEG';
+
+    doc.addImage(imgDataStr, imgFormat, x, y, imgWidth, imgHeight);
+  }
+
+  doc.save(`${filename}.pdf`);
 }
 
 export { initImgModule };
