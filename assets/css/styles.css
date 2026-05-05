@@ -1529,6 +1529,7 @@ body {
 
 .gallery-thumb {
   position: relative;
+  isolation: isolate;
   border-radius: 8px;
   overflow: hidden;
   cursor: pointer;
@@ -1546,10 +1547,13 @@ body {
 }
 
 .gallery-thumb img {
+  position: relative;
+  z-index: 1;
   width: 100%;
   aspect-ratio: 1;
   object-fit: cover;
   display: block;
+  pointer-events: none;
 }
 
 .gallery-thumb .thumb-info {
@@ -1557,33 +1561,81 @@ body {
   bottom: 0;
   left: 0;
   right: 0;
+  z-index: 2;
   background: linear-gradient(transparent, rgba(0,0,0,0.8));
   color: var(--text-muted);
   font-size: 10px;
   padding: 4px;
   text-align: center;
+  pointer-events: none;
+}
+
+.gallery-thumb .thumb-rotate {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--primary);
+  border: 1px solid rgba(255,255,255,0.2);
+  color: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1;
+  appearance: none;
+  -webkit-appearance: none;
+  opacity: 1;
+  transition: all 0.2s;
+  z-index: 3;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+  pointer-events: auto;
+}
+
+.gallery-thumb:hover .thumb-rotate {
+  background: var(--primary-hover);
+}
+
+.gallery-thumb:focus-within .thumb-rotate {
+  background: var(--primary-hover);
 }
 
 .gallery-thumb .thumb-remove {
   position: absolute;
   top: 4px;
   right: 4px;
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   background: var(--error);
-  border: none;
+  border: 1px solid rgba(255,255,255,0.2);
   color: white;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  opacity: 0;
-  transition: opacity 0.2s;
+  opacity: 1;
+  transition: all 0.2s;
+  z-index: 3;
+  pointer-events: auto;
 }
 
 .gallery-thumb:hover .thumb-remove {
-  opacity: 1;
+}
+
+.gallery-thumb:focus-within .thumb-remove {
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .gallery-thumb .thumb-rotate,
+  .gallery-thumb .thumb-remove {
+    opacity: 1;
+  }
 }
 
 .img-preview-area {
