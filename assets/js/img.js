@@ -2,6 +2,8 @@
  * Image Processing Module - Client-side image editing
  */
 
+import imglyRemoveBackground from "@imgly/background-removal";
+
 let allImages = [];
 let activeImageId = null;
 let pdfImageOrder = [];
@@ -68,7 +70,6 @@ function setupDropZone() {
     if (files.length) handleFiles(files, 'editor');
   });
 
-  // Global drag and drop handler
   window.addEventListener('dragover', (e) => {
     if (e.dataTransfer.types.includes('Files')) {
       e.preventDefault();
@@ -78,17 +79,13 @@ function setupDropZone() {
   window.addEventListener('drop', (e) => {
     const files = e.dataTransfer.files;
     
-    // Only handle if there are files (external files)
     if (!files.length) return;
     
-    // Check if dragging from within the page (images, elements)
     const isDraggingFromPage = e.dataTransfer.types.includes('text/html') && 
                                e.dataTransfer.types.includes('Files');
     
-    // If dragging from page (like preview images), ignore
     if (isDraggingFromPage) return;
     
-    // Check if dropping on internal interactive elements
     const internalSelectors = [
       '.img-preview-container', '.img-gallery', '.img-pdf-grid',
       '.gallery-thumb', '.img-pdf-thumb', 'img', 'canvas',
@@ -100,7 +97,6 @@ function setupDropZone() {
     
     if (isOnInternalElement) return;
     
-    // Process the drop
     e.preventDefault();
     
     const hasImages = Array.from(files).some(f => f.type.startsWith('image/'));
@@ -121,7 +117,7 @@ function setupFileInput() {
   fileInput.addEventListener('change', (e) => {
     if (e.target.files.length) {
       handleFiles(e.target.files, 'editor');
-      fileInput.value = ''; // Clear to allow re-uploading same file
+      fileInput.value = '';
     }
   });
 }
@@ -176,18 +172,12 @@ async function handleFiles(files, target = 'editor') {
 
   if (validFiles.length === 0) return;
 
-  const targetList = allImages;
-
   for (const file of validFiles) {
     const fileName = file.name.toLowerCase().replace(/\.heic$/i, '.png');
-    const exists = targetList.some(img => img.name.toLowerCase() === fileName);
-    if (exists) {
-      console.log('File already exists:', fileName);
-      continue;
-    }
+    const exists = allImages.some(img => img.name.toLowerCase() === fileName);
+    if (exists) continue;
 
     let processedFile = file;
-
     if (file.name.toLowerCase().endsWith('.heic') || file.type === 'image/heic') {
       try {
         const blob = await heic2any({ blob: file, toType: 'image/png' });
@@ -200,21 +190,49 @@ async function handleFiles(files, target = 'editor') {
 
     const imageData = await loadImageData(processedFile);
     if (imageData) {
-      targetList.push(imageData);
+      allImages.push(imageData);
+      if (!pdfImageOrder.includes(imageData.id)) {
+        pdfImageOrder.push(imageData.id);
+      }
     }
   }
 
-  if (target === 'editor') {
-    updateEditorState();
-    renderGallery();
-    if (!activeImageId && allImages.length > 0) {
-      selectImage(allImages[0].id);
-    }
-    updateImageCount();
-  } else {
-    renderPdfGrid();
-    updatePdfConvertButton();
+  updateAllViews();
+
+  if (target === 'editor' && !activeImageId && allImages.length > 0) {
+    selectImage(allImages[0].id);
   }
+}
+
+
+function updateAllViews() {
+  updateEditorState();
+  renderGallery();
+  renderPreview();
+  renderPdfGrid();
+  updateImageCount();
+  updatePdfConvertButton();
+}
+
+function deleteImage(id) {
+  const index = allImages.findIndex(img => img.id === id);
+  if (index === -1) return;
+
+  if (allImages[index].url) URL.revokeObjectURL(allImages[index].url);
+  if (allImages[index].processed) URL.revokeObjectURL(allImages[index].processed);
+
+  allImages.splice(index, 1);
+
+  // Sync PDF order
+  const pdfIdx = pdfImageOrder.indexOf(id);
+  if (pdfIdx > -1) pdfImageOrder.splice(pdfIdx, 1);
+
+  if (activeImageId === id) {
+    activeImageId = allImages.length > 0 ? allImages[0].id : null;
+  }
+
+  updateAllViews();
+  if (allImages.length === 0) updateOptionsPanel();
 }
 
 function loadImageData(file) {
@@ -291,7 +309,7 @@ function renderGallery() {
     removeBtn.innerHTML = '<i class="fas fa-times"></i>';
     removeBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      removeImage(imgData.id);
+      deleteImage(imgData.id);
     });
 
     thumb.appendChild(img);
@@ -332,6 +350,11 @@ function renderPdfGrid() {
     img.src = imgData.processed || imgData.url;
     img.alt = imgData.name;
     img.draggable = false;
+    
+    // Apply rotation preview
+    if (imgData.rotation) {
+      img.style.transform = `rotate(${imgData.rotation}deg)`;
+    }
 
     const actions = document.createElement('div');
     actions.className = 'pdf-thumb-actions';
@@ -479,29 +502,6 @@ function renderPreview() {
 function updateImageCount() {
   const countBadge = document.getElementById('imgCountBadge');
   if (countBadge) countBadge.textContent = allImages.length;
-}
-
-function removeImage(id) {
-  const index = allImages.findIndex(img => img.id === id);
-  if (index === -1) return;
-
-  if (allImages[index].url) URL.revokeObjectURL(allImages[index].url);
-  if (allImages[index].processed) URL.revokeObjectURL(allImages[index].processed);
-
-  allImages.splice(index, 1);
-
-  if (activeImageId === id) {
-    activeImageId = allImages.length > 0 ? allImages[0].id : null;
-  }
-
-  updateEditorState();
-  renderGallery();
-  renderPreview();
-  updateImageCount();
-
-  if (allImages.length === 0) {
-    updateOptionsPanel();
-  }
 }
 
 function setupOptionsPanel() {
@@ -695,10 +695,7 @@ async function applyFormatConversion() {
   if (converted) {
     if (activeImg.processed) URL.revokeObjectURL(activeImg.processed);
     activeImg.processed = converted;
-    activeImg.width = activeImg.originalWidth;
-    activeImg.height = activeImg.originalHeight;
-    renderPreview();
-    renderGallery();
+    updateAllViews();
   }
 }
 
@@ -751,8 +748,7 @@ async function applyResizeToActive(applyAll = false) {
     }
   }
 
-  renderPreview();
-  renderGallery();
+  updateAllViews();
   updateOptionsPanel();
 }
 
@@ -837,8 +833,7 @@ async function applyCompression() {
   if (compressed) {
     if (activeImg.processed) URL.revokeObjectURL(activeImg.processed);
     activeImg.processed = compressed;
-    renderPreview();
-    renderGallery();
+    updateAllViews();
   }
 }
 
@@ -897,17 +892,7 @@ async function removeBackground() {
 
   try {
     const src = activeImg.processed || activeImg.url;
-
-    // Check window.imglyBackgroundRemoval (common for the npm package when bundled/distributed)
-    const removeBgFn = window.removeBackground || window.imglyRemoveBackground || (window.imgly && window.imgly.removeBackground);
-    
-    if (!removeBgFn) {
-      console.error('Background removal library not loaded');
-      alert('Background removal library not loaded. Please wait a moment for it to initialize or refresh the page.');
-      return;
-    }
-
-    const blob = await removeBgFn(src, {
+    const blob = await imglyRemoveBackground(src, {
       progress: (key, current, total) => {
         const percent = Math.round((current / total) * 100);
         if (progressBar) progressBar.style.width = percent + '%';
@@ -918,14 +903,11 @@ async function removeBackground() {
     if (blob) {
       if (activeImg.processed) URL.revokeObjectURL(activeImg.processed);
       activeImg.processed = URL.createObjectURL(blob);
-      activeImg.width = activeImg.originalWidth;
-      activeImg.height = activeImg.originalHeight;
-      renderPreview();
-      renderGallery();
+      updateAllViews();
     }
   } catch (err) {
     console.error('Background removal failed:', err);
-    alert('Background removal failed: ' + err.message);
+    alert('Error: ' + err.message);
   } finally {
     if (progressContainer) progressContainer.style.display = 'none';
     if (removeBgBtn) removeBgBtn.disabled = false;
@@ -1006,11 +988,13 @@ function showWatermarkSelector() {
   canvas.addEventListener('mousemove', (e) => {
     if (!isDrawing) return;
     const rect = canvas.getBoundingClientRect();
-    const currentX = e.clientX - rect.left;
-    const currentY = e.clientY - rect.top;
+    
+    // Clamp coordinates within canvas boundaries to prevent freezing
+    const currentX = Math.max(0, Math.min(e.clientX - rect.left, canvas.width));
+    const currentY = Math.max(0, Math.min(e.clientY - rect.top, canvas.height));
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     
     const selX = Math.min(startX, currentX);
@@ -1018,12 +1002,12 @@ function showWatermarkSelector() {
     const selW = Math.abs(currentX - startX);
     const selH = Math.abs(currentY - startY);
 
-    ctx.clearRect(selX, selY, selW, selH);
-    ctx.strokeStyle = '#6d28d9';
-    ctx.lineWidth = 2;
-    ctx.setLineDash([5, 5]);
-    ctx.strokeRect(selX, selY, selW, selH);
-    ctx.setLineDash([]);
+    if (selW > 0 && selH > 0) {
+      ctx.clearRect(selX, selY, selW, selH);
+      ctx.strokeStyle = '#6d28d9';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(selX, selY, selW, selH);
+    }
   });
 
   canvas.addEventListener('mouseup', () => {
@@ -1048,16 +1032,10 @@ function applyWatermarkRemoval() {
   let minX = canvas.width, minY = canvas.height, maxX = 0, maxY = 0;
   let foundRect = false;
 
-  // We detect the rectangle by looking for the dashed border or the clear area
-  // Actually, we can just store the selection in 'showWatermarkSelector'
-  // Let's refine the detection or just pass the rect.
-  // For simplicity, let's look for the clear area (alpha 0 in our overlay logic)
-  
   for (let y = 0; y < canvas.height; y++) {
     for (let x = 0; x < canvas.width; x++) {
       const idx = (y * canvas.width + x) * 4;
-      // In our logic, we clearRect, so alpha should be 0 for the selected area
-      // and 0.3 (76/255) for the rest.
+      // Alpha 0 means it's the selection area
       if (imageData.data[idx + 3] === 0) {
         foundRect = true;
         if (x < minX) minX = x;
@@ -1088,72 +1066,63 @@ function applyWatermarkRemoval() {
 
     const selMinX = Math.floor(minX * scaleX);
     const selMinY = Math.floor(minY * scaleY);
-    const selWidth = Math.floor((maxX - minX) * scaleX);
-    const selHeight = Math.floor((maxY - minY) * scaleY);
+    const selWidth = Math.ceil((maxX - minX) * scaleX);
+    const selHeight = Math.ceil((maxY - minY) * scaleY);
 
     if (selWidth < 1 || selHeight < 1) {
       alert('Invalid selection area');
       return;
     }
 
-    // Improved "content-aware" fill (simple version: interpolation from borders)
-    const regionData = pCtx.getImageData(selMinX, selMinY, selWidth, selHeight);
-    const originalRegion = new Uint8ClampedArray(regionData.data);
+    // Get border pixels (5px around the selection)
+    const margin = 5;
+    let sumR = 0, sumG = 0, sumB = 0, count = 0;
 
-    // Simple PatchMatch-like or Inpainting: 
-    // For each pixel in the selection, take average of boundary pixels
-    for (let iteration = 0; iteration < 10; iteration++) {
-      for (let y = 0; y < selHeight; y++) {
-        for (let x = 0; x < selWidth; x++) {
-          const idx = (y * selWidth + x) * 4;
-          
-          let sumR = 0, sumG = 0, sumB = 0, count = 0;
+    // Sample from a 5px border around the selection
+    const sampleBoxX = Math.max(0, selMinX - margin);
+    const sampleBoxY = Math.max(0, selMinY - margin);
+    const sampleBoxW = Math.min(img.width - sampleBoxX, selWidth + margin * 2);
+    const sampleBoxH = Math.min(img.height - sampleBoxY, selHeight + margin * 2);
 
-          // Check neighbors in a larger radius to "bleed" colors in
-          const radius = 2;
-          for (let dy = -radius; dy <= radius; dy++) {
-            for (let dx = -radius; dx <= radius; dx++) {
-              if (dx === 0 && dy === 0) continue;
-              
-              const nx = x + dx;
-              const ny = y + dy;
+    const sampleData = pCtx.getImageData(sampleBoxX, sampleBoxY, sampleBoxW, sampleBoxH).data;
 
-              if (nx >= 0 && nx < selWidth && ny >= 0 && ny < selHeight) {
-                // Neighbor is inside selection, use its current value
-                const nIdx = (ny * selWidth + nx) * 4;
-                sumR += regionData.data[nIdx];
-                sumG += regionData.data[nIdx+1];
-                sumB += regionData.data[nIdx+2];
-                count++;
-              } else {
-                // Neighbor is outside selection, get from original image
-                const imgX = selMinX + nx;
-                const imgY = selMinY + ny;
-                if (imgX >= 0 && imgX < img.width && imgY >= 0 && imgY < img.height) {
-                    // This is slow to get via getImageData every time, but for small areas it's okay
-                    // Better: get a slightly larger region initially
-                }
-              }
-            }
-          }
+    for (let y = 0; y < sampleBoxH; y++) {
+      for (let x = 0; x < sampleBoxW; x++) {
+        const globalX = sampleBoxX + x;
+        const globalY = sampleBoxY + y;
 
-          if (count > 0) {
-            regionData.data[idx] = sumR / count;
-            regionData.data[idx+1] = sumG / count;
-            regionData.data[idx+2] = sumB / count;
-          }
+        // Only use pixels that are OUTSIDE the actual selection
+        if (globalX < selMinX || globalX >= selMinX + selWidth ||
+            globalY < selMinY || globalY >= selMinY + selHeight) {
+          const idx = (y * sampleBoxW + x) * 4;
+          sumR += sampleData[idx];
+          sumG += sampleData[idx + 1];
+          sumB += sampleData[idx + 2];
+          count++;
         }
       }
     }
 
-    pCtx.putImageData(regionData, selMinX, selMinY);
+    const avgR = count > 0 ? Math.round(sumR / count) : 128;
+    const avgG = count > 0 ? Math.round(sumG / count) : 128;
+    const avgB = count > 0 ? Math.round(sumB / count) : 128;
+
+    pCtx.fillStyle = `rgb(${avgR}, ${avgG}, ${avgB})`;
+    pCtx.fillRect(selMinX, selMinY, selWidth, selHeight);
+
+    // Apply a slight blur to the edges of the box
+    pCtx.filter = 'blur(2px)';
+    pCtx.drawImage(processingCanvas, 
+      selMinX, selMinY, selWidth, selHeight, 
+      selMinX, selMinY, selWidth, selHeight
+    );
+    pCtx.filter = 'none';
 
     processingCanvas.toBlob((blob) => {
       if (blob) {
         if (activeImg.processed) URL.revokeObjectURL(activeImg.processed);
         activeImg.processed = URL.createObjectURL(blob);
-        renderPreview();
-        renderGallery();
+        updateAllViews();
 
         const overlay = document.getElementById('watermarkOverlay');
         if (overlay) overlay.remove();
@@ -1250,11 +1219,9 @@ function clearAllImages() {
 
   allImages = [];
   activeImageId = null;
+  pdfImageOrder = [];
 
-  updateEditorState();
-  renderGallery();
-  renderPreview();
-  updateImageCount();
+  updateAllViews();
   updateOptionsPanel();
 }
 
@@ -1434,7 +1401,7 @@ async function convertToPdf() {
     const imgDataStr = imgData.processed || imgData.url;
     const imgFormat = imgData.file.type === 'image/png' ? 'PNG' : 'JPEG';
 
-    doc.addImage(imgDataStr, imgFormat, x, y, imgWidth, imgHeight);
+    doc.addImage(imgDataStr, imgFormat, x, y, imgWidth, imgHeight, null, 'FAST', rotation);
   }
 
   doc.save(`${filename}.pdf`);

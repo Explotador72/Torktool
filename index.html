@@ -45,6 +45,13 @@
     <link rel="stylesheet" href="assets/css/palette.css">
     <link rel="stylesheet" href="assets/css/styles.css">
     <link rel="icon" type="image/png" href="img/torken.png">
+    <script type="importmap">
+      {
+        "imports": {
+          "@imgly/background-removal": "https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.7.0/dist/index.mjs"
+        }
+      }
+    </script>
     <script>
       // Global functions available immediately
       window.switchTab = function(tabId) {
@@ -72,7 +79,7 @@
           if (editorView) editorView.style.display = 'none';
           if (pdfView) pdfView.style.display = 'block';
         }
-      };
+};
     </script>
 </head>
 <body>
@@ -462,7 +469,6 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.7.0/dist/index.js" onerror="console.warn('Background removal library failed to load')"></script>
   <script type="module" src="assets/js/i18n-loader.js"></script>
   <script type="module" src="assets/js/app.js"></script>
 </body>
