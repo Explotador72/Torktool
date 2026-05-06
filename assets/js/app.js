@@ -207,8 +207,9 @@ function initDragAndDrop() {
     e.preventDefault();
     
     // Don't show overlay for internal page drags (like images from preview)
-    const isInternalDrag = e.dataTransfer.types.includes('text/html') && 
-                           e.dataTransfer.types.includes('Files');
+    const isInternalDrag = e.dataTransfer.types.includes('text/plain') || (e.dataTransfer.types.includes('text/html') &&
+                           e.dataTransfer.types.includes('Files'));
+
     if (isInternalDrag) return;
     
     dragCounter++;
