@@ -252,8 +252,8 @@ async function setLatestStableDownload() {
   const btn = document.getElementById("download-btn");
   if (!btn) return;
 
-  const repoUrl = "https://github.com/MrtinTrape/Torktool";
-  const apiUrl = "https://api.github.com/repos/MrtinTrape/Torktool/releases/latest";
+  const repoUrl = "https://github.com/Explotador72/Torktool";
+  const apiUrl = "https://api.github.com/repos/Explotador72/Torktool/releases/latest";
 
   // Default fallback link to the releases page
   btn.href = `${repoUrl}/releases`;

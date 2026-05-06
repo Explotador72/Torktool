@@ -15,11 +15,13 @@ const BACKGROUND_REMOVAL_CONFIG = Object.freeze({
 // Background Removal State
 let bgWarmupPromise = null, bgWorker = null, bgWorkerUrl = null, bgTaskSeq = 0;
 const bgJobs = new Map();
+let compressionTimeout = null;
 
 // ============ UTILITIES ============
 const generateId = () => 'img_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
 const nextFrame = () => new Promise(r => requestAnimationFrame(r));
 const getActive = () => allImages.find(i => i.id === activeImageId);
+const getDisplaySrc = (img) => img.compressionPreview || img.processed || img.url;
 const getExt = (img) => {
   const fmt = $('#imgFormatSelect')?.value;
   if (fmt && fmt !== 'original') return fmt;
@@ -42,15 +44,27 @@ const processImage = (src, { w, h, format, quality = 1 } = {}) => new Promise(re
     const canvas = Object.assign(document.createElement('canvas'), {
       width: w || img.width, height: h || img.height
     });
-    canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+    const ctx = canvas.getContext('2d');
     
-    // Default format logic: if quality is < 1 and format is PNG, we must use JPEG or WebP to actually compress
-    let finalFormat = format ? `image/${format}` : undefined;
-    if (quality < 1 && (!format || format === 'png' || format === 'original')) {
-      finalFormat = 'image/jpeg'; // Force JPEG for compression
+    // Normalize format
+    let mime = format || 'image/png';
+    if (mime && !mime.includes('/')) {
+      mime = `image/${mime.replace('jpg', 'jpeg')}`;
+    }
+    
+    // If quality < 1 and format is PNG, we must use a lossy format (JPEG/WebP)
+    if (quality < 1 && mime === 'image/png') {
+      mime = 'image/jpeg';
     }
 
-    canvas.toBlob(blob => resolve(blob), finalFormat, quality);
+    // Handle background for JPEG (transparency to white)
+    if (mime === 'image/jpeg') {
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    canvas.toBlob(blob => resolve(blob), mime, quality);
   };
   img.onerror = () => resolve(null);
   img.src = src;
@@ -167,7 +181,7 @@ function loadImageData(file) {
       id: generateId(), file, url, name: file.name,
       width: img.width, height: img.height,
       originalWidth: img.width, originalHeight: img.height,
-      processed: null, rotation: 0, cropData: null,
+      processed: null, compressionPreview: null, rotation: 0, cropData: null,
       history: [], isProcessing: false, progress: 0,
       currentSize: file.size
     });
@@ -225,7 +239,7 @@ function createThumb(img, cls = '') {
   div.className = `gallery-thumb ${cls} ${img.id === activeImageId ? 'active' : ''} ${img.isProcessing ? 'processing' : ''}`;
   div.dataset.id = img.id;
   div.innerHTML = `
-    <img src="${img.processed || img.url}" alt="${img.name}" draggable="false"
+    <img src="${getDisplaySrc(img)}" alt="${img.name}" draggable="false"
          style="transform: rotate(${img.rotation || 0}deg)">
     ${img.isProcessing ? `
       <div class="thumb-progress-overlay">
@@ -277,7 +291,18 @@ function renderPdfGrid() {
 
 // ============ IMAGE OPERATIONS ============
 function selectImage(id) {
+  // Optional: Revoke previous image preview to save memory
+  const prev = getActive();
+  if (prev && prev.id !== id && prev.compressionPreview) {
+    URL.revokeObjectURL(prev.compressionPreview);
+    prev.compressionPreview = null;
+  }
+  
   activeImageId = id;
+  if ($('#imgQualitySlider')) {
+    $('#imgQualitySlider').value = 100;
+    $('#imgQualityValue').textContent = '100%';
+  }
   renderGallery(); renderPreview(); updateOptionsPanel();
 }
 
@@ -287,6 +312,7 @@ function deleteImg(id) {
   const img = allImages[idx];
   img.url && URL.revokeObjectURL(img.url);
   img.processed && URL.revokeObjectURL(img.processed);
+  img.compressionPreview && URL.revokeObjectURL(img.compressionPreview);
   allImages.splice(idx, 1);
   pdfImageOrder = pdfImageOrder.filter(i => i !== id);
   if (activeImageId === id) activeImageId = allImages[0]?.id || null;
@@ -297,15 +323,27 @@ async function rotateImg(id) {
   const img = allImages.find(i => i.id === id);
   if (!img) return;
   
+  const format = $('#imgFormatSelect')?.value;
+  const targetFormat = (!format || format === 'original') ? img.file.type : format;
+  const q = parseInt($('#imgQualitySlider')?.value || 100) / 100;
+
   const blob = await processImage(img.processed || img.url, {
     w: img.height, h: img.width,
-    format: img.file?.type?.split('/')[1] || 'png'
+    format: targetFormat,
+    quality: q
   });
   
   if (blob) {
     img.processed && URL.revokeObjectURL(img.processed);
     img.processed = URL.createObjectURL(blob);
     img.currentSize = blob.size;
+    
+    // Reset preview on structural change
+    if (img.compressionPreview) {
+      URL.revokeObjectURL(img.compressionPreview);
+      img.compressionPreview = null;
+    }
+
     [img.width, img.height] = [img.height, img.width];
     img.rotation = 0;
     updateAllViews();
@@ -324,7 +362,7 @@ function renderPreview() {
   }
   
   if (preview) {
-    preview.src = img.processed || img.url;
+    preview.src = getDisplaySrc(img);
     preview.style.display = 'block';
     preview.style.transform = `rotate(${img.rotation || 0}deg)`;
     preview.style.opacity = img.isProcessing ? '0.5' : '1';
@@ -350,19 +388,26 @@ async function applyFormatConversion() {
   const img = getActive();
   if (!img) return;
   const format = $('#imgFormatSelect')?.value;
-  if (!format || format === 'original') { 
-    img.processed = null; 
-    img.currentSize = img.file.size;
-    return updateAllViews(); 
-  }
+  const targetFormat = (!format || format === 'original') ? img.file.type : format;
+  const q = parseInt($('#imgQualitySlider')?.value || 100) / 100;
   
   const blob = await processImage(img.processed || img.url, {
-    format, quality: parseInt($('#imgQualitySlider')?.value || 100) / 100
+    w: img.width, h: img.height,
+    format: targetFormat, 
+    quality: q
   });
+  
   if (blob) {
     img.processed && URL.revokeObjectURL(img.processed);
     img.processed = URL.createObjectURL(blob);
     img.currentSize = blob.size;
+    
+    // Reset preview on structural change
+    if (img.compressionPreview) {
+      URL.revokeObjectURL(img.compressionPreview);
+      img.compressionPreview = null;
+    }
+
     updateAllViews();
   }
 }
@@ -371,28 +416,85 @@ async function applyResize(all = false) {
   const w = parseInt($('#imgWidthInput')?.value), h = parseInt($('#imgHeightInput')?.value);
   if (!w || !h || w < 1 || h < 1) return;
   
+  const format = $('#imgFormatSelect')?.value;
+  const q = parseInt($('#imgQualitySlider')?.value || 100) / 100;
+
   for (const img of (all ? allImages : [getActive()].filter(Boolean))) {
-    const blob = await processImage(img.processed || img.url, { w, h });
+    const targetFormat = (!format || format === 'original') ? img.file.type : format;
+    const blob = await processImage(img.processed || img.url, { 
+      w, h, 
+      format: targetFormat, 
+      quality: q 
+    });
     if (blob) {
       img.processed && URL.revokeObjectURL(img.processed);
       img.processed = URL.createObjectURL(blob);
       img.currentSize = blob.size;
       img.width = w; img.height = h;
+
+      // Reset preview on structural change
+      if (img.compressionPreview) {
+        URL.revokeObjectURL(img.compressionPreview);
+        img.compressionPreview = null;
+      }
     }
   }
   updateAllViews();
 }
 
-async function applyCompression() {
+async function applyCompression(isRealTime = false) {
   const img = getActive();
   if (!img) return;
-  const q = parseInt($('#imgQualitySlider')?.value || 100) / 100;
-  const f = $('#imgFormatSelect')?.value || img.name.split('.').pop() || 'png';
+
+  const targetKB = parseInt($('#imgTargetSizeInput')?.value || 0);
+  const qSlider = parseInt($('#imgQualitySlider')?.value || 100);
   
-  const blob = await processImage(img.processed || img.url, { format: f === 'original' ? undefined : f, quality: q });
+  if (isRealTime) {
+    clearTimeout(compressionTimeout);
+    compressionTimeout = setTimeout(() => executeCompression(img, qSlider / 100, targetKB), 150);
+  } else {
+    executeCompression(img, qSlider / 100, targetKB);
+  }
+}
+
+async function executeCompression(img, q, targetKB) {
+  const format = $('#imgFormatSelect')?.value;
+  const targetFormat = (!format || format === 'original') ? img.file.type : format;
+  
+  if (q >= 1 && targetKB <= 0) {
+    if (img.compressionPreview) {
+      URL.revokeObjectURL(img.compressionPreview);
+      img.compressionPreview = null;
+    }
+    return updateAllViews();
+  }
+
+  let blob = await processImage(img.processed || img.url, { 
+    w: img.width, h: img.height,
+    format: targetFormat, 
+    quality: q 
+  });
+
+  // Simple refinement if we have a target size
+  if (blob && targetKB > 0 && Math.abs(blob.size / 1024 - targetKB) > (targetKB * 0.1)) {
+    const currentKB = blob.size / 1024;
+    let q2 = Math.min(1, Math.max(0.01, q * Math.sqrt(targetKB / currentKB)));
+    const blob2 = await processImage(img.processed || img.url, { 
+      w: img.width, h: img.height,
+      format: targetFormat, 
+      quality: q2 
+    });
+    if (blob2 && Math.abs(blob2.size / 1024 - targetKB) < Math.abs(blob.size / 1024 - targetKB)) {
+      blob = blob2;
+      q = q2;
+      $('#imgQualitySlider').value = Math.round(q * 100);
+      $('#imgQualityValue').textContent = $('#imgQualitySlider').value + '%';
+    }
+  }
+
   if (blob) {
-    img.processed && URL.revokeObjectURL(img.processed);
-    img.processed = URL.createObjectURL(blob);
+    img.compressionPreview && URL.revokeObjectURL(img.compressionPreview);
+    img.compressionPreview = URL.createObjectURL(blob);
     img.currentSize = blob.size;
     updateAllViews();
   }
@@ -414,6 +516,13 @@ async function backgroundRemoval() {
     if (result) {
       img.processed && URL.revokeObjectURL(img.processed);
       img.processed = URL.createObjectURL(result);
+      
+      // Reset preview on structural change
+      if (img.compressionPreview) {
+        URL.revokeObjectURL(img.compressionPreview);
+        img.compressionPreview = null;
+      }
+
       img.progress = 100;
       updateBgProgressUI(img);
     }
@@ -455,16 +564,16 @@ async function convertToPdf() {
           else doc.addPage();
           const pw = 190, ph = 277;
           const r = Math.min(pw / w, ph / h);
-          doc.addImage(img.processed || img.url, 'PNG', 10, 10, w * r, h * r, null, 'FAST', rot);
+          doc.addImage(getDisplaySrc(img), 'PNG', 10, 10, w * r, h * r, null, 'FAST', rot);
         } else {
           const tw = 210, th = (h / w) * tw;
           if (!doc) doc = new jsPDF({ orientation: tw > th ? 'l' : 'p', unit: 'mm', format: [tw, th] });
           else doc.addPage([tw, th]);
-          doc.addImage(img.processed || img.url, 'PNG', 0, 0, tw, th, null, 'FAST', rot);
+          doc.addImage(getDisplaySrc(img), 'PNG', 0, 0, tw, th, null, 'FAST', rot);
         }
         resolve();
       };
-      image.src = img.processed || img.url;
+      image.src = getDisplaySrc(img);
     });
   }
   
@@ -474,7 +583,7 @@ async function convertToPdf() {
 // ============ DOWNLOAD ============
 function downloadImg(img) {
   const a = Object.assign(document.createElement('a'), {
-    href: img.processed || img.url,
+    href: getDisplaySrc(img),
     download: `${img.name.replace(/\.[^.]+$/, '')}.${getExt(img)}`
   });
   a.click();
@@ -579,8 +688,9 @@ function setupOptionsPanel() {
     $('#imgQualityValue').textContent = '100%';
     $('#imgQualitySlider').addEventListener('input', () => {
       $('#imgQualityValue').textContent = $('#imgQualitySlider').value + '%';
+      applyCompression(true); // Real-time debounced preview
     });
-    $('#imgQualitySlider').addEventListener('change', applyCompression);
+    $('#imgQualitySlider').addEventListener('change', () => applyCompression(false));
   }
   
   // Target KB sync
@@ -597,10 +707,10 @@ function setupOptionsPanel() {
     
     $('#imgQualitySlider').value = q;
     $('#imgQualityValue').textContent = q + '%';
-    // We don't auto-apply on input to avoid lag, user can still move slider or we can add a debounced apply
+    applyCompression(true); // Real-time debounced preview
   });
   
-  $('#imgTargetSizeInput')?.addEventListener('change', applyCompression);
+  $('#imgTargetSizeInput')?.addEventListener('change', () => applyCompression(false));
   
   $('#imgRemoveBgBtn')?.addEventListener('click', backgroundRemoval);
 }
