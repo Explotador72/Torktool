@@ -1,231 +1,505 @@
+// ============ IMAGE PROCESSING MODULE (Optimized) ============
+
+// State
 let allImages = [], activeImageId = null, pdfImageOrder = [];
+
+// Constants
 const SUPPORTED_FORMATS = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif', 'image/heic', 'image/bmp', 'image/avif'];
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
 const BACKGROUND_REMOVAL_CONFIG = Object.freeze({
-  device: 'cpu',
-  model: 'isnet_quint8',
-  rescale: true,
+  device: 'cpu', model: 'isnet_quint8', rescale: true,
   output: { format: 'image/png', quality: 1 }
 });
-let backgroundRemovalWarmupPromise = null;
-let backgroundRemovalWorker = null;
-let backgroundRemovalWorkerUrl = null;
-let backgroundRemovalTaskSeq = 0;
-const backgroundRemovalJobs = new Map();
 
-function nextFrame() {
-  return new Promise(resolve => requestAnimationFrame(() => resolve()));
-}
+// Background Removal State
+let bgWarmupPromise = null, bgWorker = null, bgWorkerUrl = null, bgTaskSeq = 0;
+const bgJobs = new Map();
 
-function warmupBackgroundRemoval() {
-  if (!backgroundRemovalWarmupPromise) {
-    backgroundRemovalWarmupPromise = getBackgroundRemovalWorker()
-      .then(worker => new Promise((resolve, reject) => {
-        const id = ++backgroundRemovalTaskSeq;
-        const onMessage = (event) => {
-          const data = event.data || {};
-          if (data.id !== id || data.type !== 'warmup-done' && data.type !== 'error') return;
-          worker.removeEventListener('message', onMessage);
-          data.type === 'warmup-done' ? resolve() : reject(new Error(data.error || 'Warmup failed'));
-        };
-        worker.addEventListener('message', onMessage);
-        worker.postMessage({ id, type: 'warmup', config: BACKGROUND_REMOVAL_CONFIG });
-      }))
-      .catch(err => {
-        console.warn('Background removal preload failed:', err);
-        backgroundRemovalWarmupPromise = null;
-      });
-  }
-  return backgroundRemovalWarmupPromise;
-}
+// ============ UTILITIES ============
+const generateId = () => 'img_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+const nextFrame = () => new Promise(r => requestAnimationFrame(r));
+const getActive = () => allImages.find(i => i.id === activeImageId);
+const getExt = (img) => {
+  const fmt = $('#imgFormatSelect')?.value;
+  if (fmt && fmt !== 'original') return fmt;
+  const ext = img.name.split('.').pop().toLowerCase();
+  return ['png','jpg','jpeg','webp','gif'].includes(ext) ? ext : 'png';
+};
 
-function getBackgroundRemovalWorker() {
-  if (backgroundRemovalWorker) return Promise.resolve(backgroundRemovalWorker);
+// Button factory
+const createBtn = (cls, icon, onclick, title = '') => 
+  Object.assign(document.createElement('button'), {
+    className: cls, title, type: 'button',
+    innerHTML: icon.startsWith('fa-') ? `<i class="fas ${icon}"></i>` : icon,
+    onclick
+  });
 
-  if (typeof Worker === 'undefined') {
-    return Promise.reject(new Error('Web Worker not supported'));
-  }
+// Unified image processing (resize + format + quality)
+const processImage = (src, { w, h, format, quality = 1 } = {}) => new Promise(resolve => {
+  const img = new Image();
+  img.onload = () => {
+    const canvas = Object.assign(document.createElement('canvas'), {
+      width: w || img.width, height: h || img.height
+    });
+    canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+    
+    // Default format logic: if quality is < 1 and format is PNG, we must use JPEG or WebP to actually compress
+    let finalFormat = format ? `image/${format}` : undefined;
+    if (quality < 1 && (!format || format === 'png' || format === 'original')) {
+      finalFormat = 'image/jpeg'; // Force JPEG for compression
+    }
 
-  if (!backgroundRemovalWorkerUrl) {
-    const workerSource = `
+    canvas.toBlob(blob => resolve(blob), finalFormat, quality);
+  };
+  img.onerror = () => resolve(null);
+  img.src = src;
+});
+
+// ============ BACKGROUND REMOVAL WORKER ============
+function getBgWorker() {
+  if (bgWorker) return Promise.resolve(bgWorker);
+  if (typeof Worker === 'undefined') return Promise.reject(new Error('Web Workers not supported'));
+
+  if (!bgWorkerUrl) {
+    const code = `
       import { removeBackground, preload } from "https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.7.0/+esm";
-
-      let warmupPromise = null;
-
-      function getConfig(config) {
-        return config || {
-          device: 'cpu',
-          model: 'isnet_quint8',
-          rescale: true,
-          output: { format: 'image/png', quality: 1 }
-        };
-      }
-
-      function warmup(config) {
-        if (!warmupPromise) {
-          warmupPromise = preload(getConfig(config)).catch(() => {
-            warmupPromise = null;
-          });
-        }
-        return warmupPromise;
-      }
-
-      self.onmessage = async (event) => {
-        const { id, type, file, config } = event.data || {};
-
+      let warmupP = null;
+      const getCfg = c => c || { device:'cpu', model:'isnet_quint8', rescale:true, output:{format:'image/png',quality:1} };
+      
+      self.onmessage = async e => {
+        const { id, type, file, config } = e.data || {};
         if (type === 'warmup') {
-          try {
-            await warmup(config);
-            self.postMessage({ id, type: 'warmup-done' });
-          } catch (error) {
-            self.postMessage({ id, type: 'error', error: error?.message || 'Warmup failed' });
-          }
+          try { warmupP = warmupP || preload(getCfg(config)).catch(() => warmupP = null);
+            await warmupP; self.postMessage({ id, type:'warmup-done' });
+          } catch(err) { self.postMessage({ id, type:'error', error:err?.message }); }
           return;
         }
-
         if (type !== 'remove') return;
-
         try {
           const blob = await removeBackground(file, {
-            ...getConfig(config),
-            progress: (stage, current, total) => {
-              self.postMessage({ id, type: 'progress', stage, current, total });
-            }
+            ...getCfg(config),
+            progress: (stage, cur, total) => self.postMessage({ id, type:'progress', stage, cur, total })
           });
-          self.postMessage({ id, type: 'done', blob });
-        } catch (error) {
-          self.postMessage({ id, type: 'error', error: error?.message || 'Background removal failed' });
-        }
-      };
-    `;
-    backgroundRemovalWorkerUrl = URL.createObjectURL(new Blob([workerSource], { type: 'text/javascript' }));
+          self.postMessage({ id, type:'done', blob });
+        } catch(err) { self.postMessage({ id, type:'error', error:err?.message }); }
+      };`;
+    bgWorkerUrl = URL.createObjectURL(new Blob([code], { type: 'text/javascript' }));
   }
 
-  backgroundRemovalWorker = new Worker(backgroundRemovalWorkerUrl, { type: 'module' });
-  backgroundRemovalWorker.onmessage = (event) => {
-    const data = event.data || {};
-    const job = backgroundRemovalJobs.get(data.id);
+  bgWorker = new Worker(bgWorkerUrl, { type: 'module' });
+  
+  bgWorker.onmessage = e => {
+    const { id, type, stage, cur, total, blob, error } = e.data || {};
+    const job = bgJobs.get(id);
     if (!job) return;
-
-    if (data.type === 'progress') {
-      const pct = getBackgroundRemovalPercent(data.stage, data.current, data.total, job.percent);
-      if (pct > job.percent) {
-        job.percent = pct;
-        job.img.progress = pct;
-        renderBackgroundRemovalProgress(job.img);
-      }
+    
+    if (type === 'progress') {
+      const pct = Math.max(job.img.progress || 0, 
+        stage?.startsWith('fetch:') ? Math.min(70, (cur/total)*70) :
+        stage === 'compute:decode' ? 72 : stage === 'compute:inference' ? 84 :
+        stage === 'compute:mask' ? 92 : stage === 'compute:encode' ? 96 + (cur/total)*4 :
+        (cur/total)*100);
+      job.img.progress = Math.round(pct);
+      updateBgProgressUI(job.img);
       return;
     }
-
-    backgroundRemovalJobs.delete(data.id);
-
-    if (data.type === 'done') {
-      job.resolve(data.blob);
-      return;
-    }
-
-    job.reject(new Error(data.error || 'Background removal failed'));
+    
+    bgJobs.delete(id);
+    type === 'done' ? job.resolve(blob) : job.reject(new Error(error));
   };
-
-  backgroundRemovalWorker.onerror = (error) => {
-    const err = new Error(error.message || 'Background removal worker crashed');
-    backgroundRemovalJobs.forEach(job => job.reject(err));
-    backgroundRemovalJobs.clear();
-    backgroundRemovalWorker?.terminate();
-    backgroundRemovalWorker = null;
-    backgroundRemovalWarmupPromise = null;
+  
+  bgWorker.onerror = () => {
+    [...bgJobs.values()].forEach(j => j.reject(new Error('Worker crashed')));
+    bgJobs.clear(); bgWorker?.terminate(); bgWorker = null; bgWarmupPromise = null;
   };
-
-  return Promise.resolve(backgroundRemovalWorker);
+  
+  return Promise.resolve(bgWorker);
 }
 
-async function removeBackgroundInWorker(file, img) {
-  const worker = await getBackgroundRemovalWorker();
-  const id = ++backgroundRemovalTaskSeq;
+function warmupBg() {
+  bgWarmupPromise = bgWarmupPromise || getBgWorker()
+    .then(w => new Promise((resolve, reject) => {
+      const id = ++bgTaskSeq;
+      const handler = e => {
+        if (e.data?.id !== id) return;
+        w.removeEventListener('message', handler);
+        e.data?.type === 'warmup-done' ? resolve() : reject(new Error(e.data?.error));
+      };
+      w.addEventListener('message', handler);
+      w.postMessage({ id, type:'warmup', config: BACKGROUND_REMOVAL_CONFIG });
+    }))
+    .catch(() => { bgWarmupPromise = null; });
+  return bgWarmupPromise;
+}
 
+async function removeBg(file, img) {
+  const worker = await getBgWorker();
+  const id = ++bgTaskSeq;
   return new Promise((resolve, reject) => {
-    backgroundRemovalJobs.set(id, {
-      img,
-      percent: img.progress || 0,
-      resolve,
-      reject
-    });
-
-    worker.postMessage({
-      id,
-      type: 'remove',
-      file,
-      config: BACKGROUND_REMOVAL_CONFIG
-    });
+    bgJobs.set(id, { img, resolve, reject });
+    worker.postMessage({ id, type:'remove', file, config: BACKGROUND_REMOVAL_CONFIG });
   });
 }
 
-function getBackgroundRemovalPercent(stage, current, total, lastPercent = 0) {
-  const ratio = total > 0 ? Math.max(0, Math.min(1, current / total)) : 0;
-
-  if (typeof stage === 'string') {
-    if (stage.startsWith('fetch:')) return Math.max(lastPercent, Math.min(70, Math.round(ratio * 70)));
-    if (stage === 'compute:decode') return Math.max(lastPercent, 72);
-    if (stage === 'compute:inference') return Math.max(lastPercent, 84);
-    if (stage === 'compute:mask') return Math.max(lastPercent, 92);
-    if (stage === 'compute:encode') return Math.max(lastPercent, Math.min(100, 96 + Math.round(ratio * 4)));
+function updateBgProgressUI(img) {
+  const pct = img.progress || 0;
+  if (activeImageId === img.id) {
+    const bar = $('#imgBgProgressBar'), text = $('#imgBgProgressText');
+    if (bar) bar.style.width = pct + '%';
+    if (text) text.textContent = pct + '%';
+    $('#imgBgProgress').style.display = 'block';
   }
-
-  return Math.max(lastPercent, Math.round(ratio * 100));
+  const thumb = $(`.gallery-thumb[data-id="${img.id}"]`);
+  if (thumb) {
+    const tBar = thumb.querySelector('.thumb-progress-bar');
+    const tText = thumb.querySelector('.thumb-progress-text');
+    if (tBar) tBar.style.width = pct + '%';
+    if (tText) tText.textContent = pct + '%';
+  }
 }
 
-function renderBackgroundRemovalProgress(img) {
-  const percent = Math.max(0, Math.min(100, Math.round(img.progress || 0)));
+// ============ IMAGE LOADING ============
+function loadImageData(file) {
+  return new Promise(resolve => {
+    const url = URL.createObjectURL(file), img = new Image();
+    img.onload = () => resolve({
+      id: generateId(), file, url, name: file.name,
+      width: img.width, height: img.height,
+      originalWidth: img.width, originalHeight: img.height,
+      processed: null, rotation: 0, cropData: null,
+      history: [], isProcessing: false, progress: 0,
+      currentSize: file.size
+    });
+    img.onerror = () => { resolve(null); URL.revokeObjectURL(url); };
+    img.src = url;
+  });
+}
 
-  if (activeImageId === img.id) {
-    const progress = $('#imgBgProgress'), bar = $('#imgBgProgressBar'), text = $('#imgBgProgressText');
-    if (progress && bar && text) {
-      progress.style.display = 'block';
-      bar.style.width = percent + '%';
-      text.textContent = percent + '%';
+async function handleFiles(files, target = 'editor') {
+  const valid = [...files].filter(f => SUPPORTED_FORMATS.includes(f.type));
+  if (!valid.length) return;
+
+  for (const file of valid) {
+    const name = file.name.toLowerCase().replace(/\.heic$/i, '.png');
+    if (allImages.some(i => i.name.toLowerCase() === name)) continue;
+
+    let f = file;
+    if (file.name.toLowerCase().endsWith('.heic')) {
+      try {
+        const blob = await heic2any({ blob: file, toType: 'image/png' });
+        f = new File([blob], name, { type: 'image/png' });
+      } catch (e) { console.error('HEIC failed:', e); continue; }
+    }
+
+    const data = await loadImageData(f);
+    if (!data) continue;
+    
+    allImages.push(data);
+    if (!pdfImageOrder.includes(data.id)) pdfImageOrder.push(data.id);
+  }
+
+  updateAllViews();
+  if (target === 'editor' && !activeImageId && allImages.length) selectImage(allImages[0].id);
+}
+
+// ============ UI UPDATES ============
+function updateAllViews() {
+  $('#imgInitialState').style.display = allImages.length ? 'none' : 'flex';
+  $('#imgEditorLayout').style.display = allImages.length ? 'grid' : 'none';
+  renderGallery(); renderPreview(); renderPdfGrid();
+  $('#imgCountBadge').textContent = allImages.length;
+  updatePdfBtn();
+}
+
+function updateOptionsPanel() {
+  const img = getActive();
+  if ($('#imgWidthInput')) $('#imgWidthInput').value = img?.width || '';
+  if ($('#imgHeightInput')) $('#imgHeightInput').value = img?.height || '';
+  $$('#imgRemoveBgBtn, #imgWatermarkBtn').forEach(b => b.disabled = !img || img.isProcessing);
+}
+
+// ============ THUMBNAIL RENDERING ============
+function createThumb(img, cls = '') {
+  const div = document.createElement('div');
+  div.className = `gallery-thumb ${cls} ${img.id === activeImageId ? 'active' : ''} ${img.isProcessing ? 'processing' : ''}`;
+  div.dataset.id = img.id;
+  div.innerHTML = `
+    <img src="${img.processed || img.url}" alt="${img.name}" draggable="false"
+         style="transform: rotate(${img.rotation || 0}deg)">
+    ${img.isProcessing ? `
+      <div class="thumb-progress-overlay">
+        <div class="thumb-progress-bar" style="width:${img.progress}%"></div>
+        <span class="thumb-progress-text">${img.progress}%</span>
+      </div>` : ''}
+    <div class="thumb-info">${img.width}x${img.height}</div>
+  `;
+  div.append(
+    createBtn('thumb-remove', 'fa-times', e => { e.stopPropagation(); deleteImg(img.id); }),
+    createBtn('thumb-rotate', '↻', e => { e.stopPropagation(); rotateImg(img.id); }, 'Rotar')
+  );
+  div.onclick = () => selectImage(img.id);
+  return div;
+}
+
+function renderGallery() {
+  const list = $('#imgGalleryList');
+  if (!list) return;
+  list.innerHTML = '';
+  allImages.forEach(img => list.appendChild(createThumb(img)));
+}
+
+function renderPdfGrid() {
+  const grid = $('#imgPdfGrid');
+  if (!grid) return;
+  grid.innerHTML = pdfImageOrder.length ? '' : '<div class="img-pdf-empty">No images loaded</div>';
+  
+  pdfImageOrder.forEach(id => {
+    const img = allImages.find(i => i.id === id);
+    if (!img) return;
+    const thumb = createThumb(img, 'img-pdf-thumb');
+    thumb.draggable = true;
+    thumb.ondragstart = e => { thumb.classList.add('dragging'); e.dataTransfer.setData('text/plain', id); };
+    thumb.ondragend = () => thumb.classList.remove('dragging');
+    thumb.ondragover = e => e.preventDefault();
+    thumb.ondrop = e => {
+      e.preventDefault();
+      const from = e.dataTransfer.getData('text/plain');
+      const i1 = pdfImageOrder.indexOf(from), i2 = pdfImageOrder.indexOf(id);
+      if (i1 > -1 && i2 > -1) {
+        pdfImageOrder.splice(i2, 0, pdfImageOrder.splice(i1, 1)[0]);
+        renderPdfGrid();
+      }
+    };
+    grid.appendChild(thumb);
+  });
+}
+
+// ============ IMAGE OPERATIONS ============
+function selectImage(id) {
+  activeImageId = id;
+  renderGallery(); renderPreview(); updateOptionsPanel();
+}
+
+function deleteImg(id) {
+  const idx = allImages.findIndex(i => i.id === id);
+  if (idx === -1) return;
+  const img = allImages[idx];
+  img.url && URL.revokeObjectURL(img.url);
+  img.processed && URL.revokeObjectURL(img.processed);
+  allImages.splice(idx, 1);
+  pdfImageOrder = pdfImageOrder.filter(i => i !== id);
+  if (activeImageId === id) activeImageId = allImages[0]?.id || null;
+  updateAllViews();
+}
+
+async function rotateImg(id) {
+  const img = allImages.find(i => i.id === id);
+  if (!img) return;
+  
+  const blob = await processImage(img.processed || img.url, {
+    w: img.height, h: img.width,
+    format: img.file?.type?.split('/')[1] || 'png'
+  });
+  
+  if (blob) {
+    img.processed && URL.revokeObjectURL(img.processed);
+    img.processed = URL.createObjectURL(blob);
+    img.currentSize = blob.size;
+    [img.width, img.height] = [img.height, img.width];
+    img.rotation = 0;
+    updateAllViews();
+  }
+}
+
+function renderPreview() {
+  const preview = $('#imgPreview'), container = $('#imgPreviewContainer');
+  const img = getActive();
+  
+  if (!img) {
+    if (preview) { preview.src = ''; preview.style.display = 'none'; }
+    if (container) container.classList.add('empty');
+    if ($('#imgDownloadBtn')) $('#imgDownloadBtn').disabled = true;
+    return;
+  }
+  
+  if (preview) {
+    preview.src = img.processed || img.url;
+    preview.style.display = 'block';
+    preview.style.transform = `rotate(${img.rotation || 0}deg)`;
+    preview.style.opacity = img.isProcessing ? '0.5' : '1';
+  }
+  if (container) container.classList.remove('empty');
+  if ($('#imgDownloadBtn')) $('#imgDownloadBtn').disabled = false;
+  
+  const sizeEl = $('#imgOriginalSizeValue');
+  if (sizeEl && img.file) {
+    const origKB = Math.round(img.file.size / 1024);
+    const currKB = Math.round((img.currentSize || img.file.size) / 1024);
+    sizeEl.innerHTML = `${origKB} KB ${currKB !== origKB ? `→ <strong>${currKB} KB</strong>` : ''}`;
+  }
+  
+  // Progress
+  const progress = $('#imgBgProgress');
+  if (progress) progress.style.display = img.isProcessing ? 'block' : 'none';
+  if (img.isProcessing) updateBgProgressUI(img);
+}
+
+// ============ FORMAT, RESIZE & COMPRESSION ============
+async function applyFormatConversion() {
+  const img = getActive();
+  if (!img) return;
+  const format = $('#imgFormatSelect')?.value;
+  if (!format || format === 'original') { 
+    img.processed = null; 
+    img.currentSize = img.file.size;
+    return updateAllViews(); 
+  }
+  
+  const blob = await processImage(img.processed || img.url, {
+    format, quality: parseInt($('#imgQualitySlider')?.value || 100) / 100
+  });
+  if (blob) {
+    img.processed && URL.revokeObjectURL(img.processed);
+    img.processed = URL.createObjectURL(blob);
+    img.currentSize = blob.size;
+    updateAllViews();
+  }
+}
+
+async function applyResize(all = false) {
+  const w = parseInt($('#imgWidthInput')?.value), h = parseInt($('#imgHeightInput')?.value);
+  if (!w || !h || w < 1 || h < 1) return;
+  
+  for (const img of (all ? allImages : [getActive()].filter(Boolean))) {
+    const blob = await processImage(img.processed || img.url, { w, h });
+    if (blob) {
+      img.processed && URL.revokeObjectURL(img.processed);
+      img.processed = URL.createObjectURL(blob);
+      img.currentSize = blob.size;
+      img.width = w; img.height = h;
     }
   }
+  updateAllViews();
+}
 
-  const thumb = document.querySelector(`.gallery-thumb[data-id="${img.id}"]`);
-  if (thumb) {
-    const thumbBar = thumb.querySelector('.thumb-progress-bar');
-    const thumbText = thumb.querySelector('.thumb-progress-text');
-    if (thumbBar) thumbBar.style.width = percent + '%';
-    if (thumbText) thumbText.textContent = percent + '%';
+async function applyCompression() {
+  const img = getActive();
+  if (!img) return;
+  const q = parseInt($('#imgQualitySlider')?.value || 100) / 100;
+  const f = $('#imgFormatSelect')?.value || img.name.split('.').pop() || 'png';
+  
+  const blob = await processImage(img.processed || img.url, { format: f === 'original' ? undefined : f, quality: q });
+  if (blob) {
+    img.processed && URL.revokeObjectURL(img.processed);
+    img.processed = URL.createObjectURL(blob);
+    img.currentSize = blob.size;
+    updateAllViews();
   }
 }
 
-function initImgModule() {
-  setupDropZone();
-  setupFileInput();
-  setupMiniDropZones();
-  setupOptionsPanel();
-  setupPreviewActions();
-  setupPdfConvert();
-  void warmupBackgroundRemoval();
+// ============ BACKGROUND REMOVAL ============
+async function backgroundRemoval() {
+  const img = getActive();
+  if (!img || img.isProcessing) return;
   
-  window.switchImgView = (view) => {
-    $$('.img-toolbar-btn').forEach(b => b.classList.toggle('active', b.dataset.imgView === view));
-    const editor = $('#imgEditorView'), pdf = $('#imgPdfView');
-    if (editor) editor.style.display = view === 'editor' ? 'block' : 'none';
-    if (pdf) pdf.style.display = view === 'pdf' ? 'block' : 'none';
-  };
+  img.isProcessing = true; img.progress = 0;
+  updateAllViews(); updateOptionsPanel();
+  await nextFrame();
+  warmupBg();
+  
+  try {
+    const blob = img.processed ? await fetch(img.processed).then(r => r.blob()) : img.file;
+    const result = await removeBg(blob, img);
+    if (result) {
+      img.processed && URL.revokeObjectURL(img.processed);
+      img.processed = URL.createObjectURL(result);
+      img.progress = 100;
+      updateBgProgressUI(img);
+    }
+  } catch (e) {
+    console.error('Background removal failed:', e);
+    alert('Error al eliminar el fondo. Inténtalo de nuevo.');
+  } finally {
+    img.isProcessing = false;
+    updateAllViews(); updateOptionsPanel();
+  }
 }
 
-function generateId() { return 'img_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9); }
+// ============ PDF ============
+function removeFromPdf(id) { pdfImageOrder = pdfImageOrder.filter(i => i !== id); renderPdfGrid(); updatePdfBtn(); }
+function clearAllPdf() { pdfImageOrder = []; renderPdfGrid(); updatePdfBtn(); }
+function updatePdfBtn() { if ($('#imgConvertPdfBtn')) $('#imgConvertPdfBtn').disabled = !pdfImageOrder.length; }
 
-// ============ DROP ZONES (Simplificado) ============
+async function convertToPdf() {
+  if (!pdfImageOrder.length || !window.jspdf?.jsPDF) return alert('PDF library not loaded');
+  
+  const { jsPDF } = window.jspdf;
+  const format = $('input[name="imgPdfFormat"]:checked')?.value || 'uniform';
+  const isA4 = format === 'a4';
+  let doc = null;
+  
+  for (let i = 0; i < pdfImageOrder.length; i++) {
+    const img = allImages.find(im => im.id === pdfImageOrder[i]);
+    if (!img) continue;
+    
+    await new Promise(resolve => {
+      const image = new Image();
+      image.onload = () => {
+        const rot = img.rotation || 0;
+        const w = rot % 180 ? image.height : image.width;
+        const h = rot % 180 ? image.width : image.height;
+        
+        if (isA4) {
+          if (!doc) doc = new jsPDF('p', 'mm', 'a4');
+          else doc.addPage();
+          const pw = 190, ph = 277;
+          const r = Math.min(pw / w, ph / h);
+          doc.addImage(img.processed || img.url, 'PNG', 10, 10, w * r, h * r, null, 'FAST', rot);
+        } else {
+          const tw = 210, th = (h / w) * tw;
+          if (!doc) doc = new jsPDF({ orientation: tw > th ? 'l' : 'p', unit: 'mm', format: [tw, th] });
+          else doc.addPage([tw, th]);
+          doc.addImage(img.processed || img.url, 'PNG', 0, 0, tw, th, null, 'FAST', rot);
+        }
+        resolve();
+      };
+      image.src = img.processed || img.url;
+    });
+  }
+  
+  doc?.save(`${$('#imgPdfFilename')?.value || 'documento'}.pdf`);
+}
+
+// ============ DOWNLOAD ============
+function downloadImg(img) {
+  const a = Object.assign(document.createElement('a'), {
+    href: img.processed || img.url,
+    download: `${img.name.replace(/\.[^.]+$/, '')}.${getExt(img)}`
+  });
+  a.click();
+}
+
+function downloadImage() { const img = getActive(); if (img) downloadImg(img); }
+
+function downloadAllImages() { allImages.forEach((img, i) => setTimeout(() => downloadImg(img), i * 500)); }
+
+function clearAllImages() {
+  allImages.forEach(img => { img.url && URL.revokeObjectURL(img.url); img.processed && URL.revokeObjectURL(img.processed); });
+  allImages = []; activeImageId = null; pdfImageOrder = [];
+  updateAllViews(); updateOptionsPanel();
+}
+
+// ============ SETUP ============
 function setupDropZone() {
   const zone = $('#imgDropZone');
   if (!zone) return;
   
-  //Upload files manually
   zone.onclick = () => $('#imgFileInput').click();
   ['dragover', 'dragleave', 'drop'].forEach(ev => zone.addEventListener(ev, e => {
     e.preventDefault(); e.stopPropagation();
     zone.classList.toggle('drag-over', ev === 'dragover');
-    if (ev === 'drop') e.dataTransfer.files.length && handleFiles(e.dataTransfer.files, 'editor');
+    if (ev === 'drop' && e.dataTransfer.files.length) handleFiles(e.dataTransfer.files, 'editor');
   }));
 
   window.addEventListener('dragover', e => e.dataTransfer.types.includes('Files') && e.preventDefault());
@@ -240,447 +514,95 @@ function setupDropZone() {
   });
 }
 
-function setupFileInput() {
-  $('#imgFileInput')?.addEventListener('change', e => {
-    e.target.files.length && handleFiles(e.target.files, 'editor');
-    e.target.value = '';
-  });
-}
-
 function setupMiniDropZones() {
   ['#imgMiniDropZone', '#imgCompactDropZone'].forEach(sel => {
     const zone = $(sel);
     if (!zone) return;
-    zone.onclick = (e) => { e.stopPropagation(); $('#imgFileInput').click(); };
+    zone.onclick = e => { e.stopPropagation(); $('#imgFileInput').click(); };
     zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
     zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
     zone.addEventListener('drop', e => {
       e.preventDefault(); zone.classList.remove('drag-over');
-      e.dataTransfer.files.length && handleFiles(e.dataTransfer.files, 'editor');
+      if (e.dataTransfer.files.length) handleFiles(e.dataTransfer.files, 'editor');
     });
   });
 }
 
-// ============ FILE HANDLING (Fusionado) ============
-async function handleFiles(files, target = 'editor') {
-  const validFiles = [...files].filter(f => SUPPORTED_FORMATS.includes(f.type) || f.type === 'image/heic');
-  if (!validFiles.length) return;
-
-  for (const file of validFiles) {
-    const fileName = file.name.toLowerCase().replace(/\.heic$/i, '.png');
-    if (allImages.some(img => img.name.toLowerCase() === fileName)) continue;
-
-    let processedFile = file;
-    if (file.name.toLowerCase().endsWith('.heic') || file.type === 'image/heic') {
-      try {
-        const blob = await heic2any({ blob: file, toType: 'image/png' });
-        processedFile = new File([blob], file.name.replace(/\.heic$/i, '.png'), { type: 'image/png' });
-      } catch (err) { console.error('HEIC conversion failed:', err); continue; }
-    }
-
-    const imageData = await loadImageData(processedFile);
-    if (imageData) {
-      allImages.push(imageData);
-      if (!pdfImageOrder.includes(imageData.id)) pdfImageOrder.push(imageData.id);
-    }
-  }
-
-  updateAllViews();
-  if (target === 'editor' && !activeImageId && allImages.length) selectImage(allImages[0].id);
-}
-
-function loadImageData(file) {
-  return new Promise(resolve => {
-    const url = URL.createObjectURL(file), img = new Image();
-    img.onload = () => resolve({ id: generateId(), file, url, name: file.name, width: img.width, height: img.height, originalWidth: img.width, originalHeight: img.height, processed: null, rotation: 0, cropData: null, history: [], isProcessing: false, progress: 0 });
-    img.onerror = () => { resolve(null); URL.revokeObjectURL(url); };
-    img.src = url;
+function setupFileInput() {
+  $('#imgFileInput')?.addEventListener('change', e => {
+    if (e.target.files.length) handleFiles(e.target.files, 'editor');
+    e.target.value = '';
   });
 }
 
-// ============ VIEW UPDATES (Simplificado) ============
-function updateAllViews() {
-  $('#imgInitialState').style.display = allImages.length ? 'none' : 'flex';
-  $('#imgEditorLayout').style.display = allImages.length ? 'grid' : 'none';
-  renderGallery();
-  renderPreview();
-  renderPdfGrid();
-  $('#imgCountBadge').textContent = allImages.length;
-  updatePdfConvertButton();
-}
-
-function deleteImage(id) {
-  const idx = allImages.findIndex(img => img.id === id);
-  if (idx === -1) return;
-  const img = allImages[idx];
-  img.url && URL.revokeObjectURL(img.url);
-  img.processed && URL.revokeObjectURL(img.processed);
-  allImages.splice(idx, 1);
-  pdfImageOrder = pdfImageOrder.filter(i => i !== id);
-  if (activeImageId === id) activeImageId = allImages.length ? allImages[0].id : null;
-  updateAllViews();
-  if (!allImages.length) updateOptionsPanel();
-}
-
-// ============ GALLERY RENDERING ============
-function createThumb(imgData, extraClass = '', actions = null) {
-  const thumb = document.createElement('div');
-  thumb.className = `gallery-thumb ${extraClass} ${imgData.isProcessing ? 'processing' : ''}`;
-  thumb.dataset.id = imgData.id;
-  const rotation = imgData.rotation || 0;
-  
-  let thumbHtml = `<img src="${imgData.processed || imgData.url}" alt="${imgData.name}" draggable="false" style="transform: rotate(${rotation}deg);">`;
-  if (imgData.isProcessing) {
-    thumbHtml += `<div class="thumb-progress-overlay"><div class="thumb-progress-bar" style="width: ${imgData.progress}%"></div><span class="thumb-progress-text">${imgData.progress}%</span></div>`;
-  }
-  thumbHtml += `<div class="thumb-info">${imgData.width}x${imgData.height}</div>`;
-  thumb.innerHTML = thumbHtml;
-  
-  const removeBtn = document.createElement('button');
-  const rotateBtn = document.createElement('button');
-  removeBtn.type = 'button';
-  rotateBtn.type = 'button';
-  rotateBtn.className = 'thumb-rotate';
-  rotateBtn.setAttribute('aria-label', 'Rotar imagen');
-  rotateBtn.title = 'Rotar imagen';
-  rotateBtn.innerHTML = '<span aria-hidden="true">&#8635;</span>';
-  removeBtn.className = 'thumb-remove';
-  removeBtn.setAttribute('aria-label', 'Eliminar imagen');
-  removeBtn.innerHTML = '<i class="fas fa-times"></i>';
-  removeBtn.onclick = (e) => { e.stopPropagation(); deleteImage(imgData.id); };
-  rotateBtn.onclick = (e) => { e.stopPropagation(); rotateImage(imgData.id); };
-  thumb.appendChild(removeBtn);
-  thumb.appendChild(rotateBtn);
-  
-  if (actions) thumb.appendChild(actions);
-  thumb.onclick = () => selectImage(imgData.id);
-  return thumb;
-}
-
-function renderGallery() {
-  const list = $('#imgGalleryList');
-  if (!list) return;
-  list.innerHTML = '';
-  allImages.forEach(img => {
-    const thumb = createThumb(img, img.id === activeImageId ? 'active' : '');
-    list.appendChild(thumb);
-  });
-}
-
-function renderPdfGrid() {
-  const grid = $('#imgPdfGrid');
-  if (!grid) return;
-  grid.innerHTML = pdfImageOrder.length ? '' : '<div class="img-pdf-empty">No images loaded</div>';
-  
-  pdfImageOrder.forEach(id => {
-    const img = allImages.find(i => i.id === id);
-    if (!img) return;
-    
-    const thumb = createThumb(img, 'img-pdf-thumb');
-    thumb.draggable = true;
-    
-    thumb.addEventListener('dragstart', e => { thumb.classList.add('dragging'); e.dataTransfer.setData('text/plain', id); });
-    thumb.addEventListener('dragend', () => thumb.classList.remove('dragging'));
-    thumb.addEventListener('dragover', e => e.preventDefault());
-    thumb.addEventListener('drop', e => {
-      e.preventDefault();
-      const fromId = e.dataTransfer.getData('text/plain');
-      if (fromId && fromId !== id) {
-        const from = pdfImageOrder.indexOf(fromId), to = pdfImageOrder.indexOf(id);
-        if (from > -1 && to > -1) { pdfImageOrder.splice(to, 0, pdfImageOrder.splice(from, 1)[0]); renderPdfGrid(); }
-      }
-    });
-    
-    grid.appendChild(thumb);
-  });
-}
-
-// ============ IMAGE OPERATIONS (Simplificado) ============
-function selectImage(id) {
-  activeImageId = id;
-  renderGallery();
-  renderPreview();
-  updateOptionsPanel();
-}
-
-function renderPreview() {
-  const preview = $('#imgPreview'), container = $('#imgPreviewContainer'), download = $('#imgDownloadBtn');
-  const img = allImages.find(i => i.id === activeImageId);
-  
-  if (!img) {
-    if (preview) { preview.src = ''; preview.style.display = 'none'; }
-    if (container) container.classList.add('empty');
-    if (download) download.disabled = true;
-    return;
-  }
-  
-  if (preview) { 
-    preview.src = img.processed || img.url; 
-    preview.style.display = 'block'; 
-    preview.style.transform = `rotate(${img.rotation || 0}deg)`;
-    preview.style.opacity = img.isProcessing ? '0.5' : '1';
-  }
-  if (container) {
-    container.classList.remove('empty');
-    const progress = $('#imgBgProgress'), bar = $('#imgBgProgressBar'), text = $('#imgBgProgressText');
-    if (progress && bar && text) {
-      if (img.isProcessing) {
-        progress.style.display = 'block';
-        bar.style.width = img.progress + '%';
-        text.textContent = img.progress + '%';
-      } else {
-        progress.style.display = 'none';
-      }
-    }
-  }
-  if (download) download.disabled = false;
-  
-  const sizeEl = $('#imgOriginalSizeValue');
-  if (sizeEl && img.file) sizeEl.textContent = `${Math.round(img.file.size / 1024)} KB`;
-}
-
-function updateOptionsPanel() {
-  const img = allImages.find(i => i.id === activeImageId);
-  if ($('#imgWidthInput')) $('#imgWidthInput').value = img ? img.width : '';
-  if ($('#imgHeightInput')) $('#imgHeightInput').value = img ? img.height : '';
-  ['#imgRemoveBgBtn', '#imgWatermarkBtn'].forEach(s => { 
-    if ($(s)) $(s).disabled = !img || img.isProcessing; 
-  });
-}
-
-// ============ FORMAT & RESIZE (Fusionado) ============
-async function applyFormatConversion() {
-  const img = allImages.find(i => i.id === activeImageId);
-  if (!img) return;
-  const format = $('#imgFormatSelect')?.value || 'original';
-  
-  if (format === 'original') { img.processed = null; return updateAllViews(); }
-  
-  const converted = await convertImage(img.processed || img.url, format, parseInt($('#imgQualitySlider')?.value || 100) / 100);
-  if (converted) { img.processed && URL.revokeObjectURL(img.processed); img.processed = converted; updateAllViews(); }
-}
-
-function convertImage(src, format, quality = 1) {
-  return new Promise(resolve => {
-    const img = new Image();
-    img.onload = () => {
-      const canvas = Object.assign(document.createElement('canvas'), { width: img.width, height: img.height });
-      canvas.getContext('2d').drawImage(img, 0, 0);
-      canvas.toBlob(blob => resolve(blob ? URL.createObjectURL(blob) : null), format === 'jpeg' ? 'image/jpeg' : `image/${format}`, quality);
-    };
-    img.onerror = () => resolve(null);
-    img.src = src;
-  });
-}
-
-async function applyResize(applyAll = false) {
-  const w = parseInt($('#imgWidthInput')?.value), h = parseInt($('#imgHeightInput')?.value);
-  if (!w || !h || w < 1 || h < 1) return;
-  
-  for (const img of (applyAll ? allImages : [allImages.find(i => i.id === activeImageId)])) {
-    if (!img) continue;
-    const resized = await resizeImage(img.processed || img.url, w, h);
-    if (resized) { img.processed && URL.revokeObjectURL(img.processed); img.processed = resized; img.width = w; img.height = h; }
-  }
-  updateAllViews();
-}
-
-function resizeImage(src, w, h) {
-  return new Promise(resolve => {
-    const img = new Image();
-    img.onload = () => {
-      const canvas = Object.assign(document.createElement('canvas'), { width: w, height: h });
-      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-      canvas.toBlob(blob => resolve(blob ? URL.createObjectURL(blob) : null));
-    };
-    img.onerror = () => resolve(null);
-    img.src = src;
-  });
-}
-
-// ============ BACKGROUND REMOVAL ============
-async function backgroundRemoval() {
-  const img = allImages.find(i => i.id === activeImageId);
-  if (!img || img.isProcessing) return;
-  
-  img.isProcessing = true;
-  img.progress = 0;
-  updateAllViews();
-  updateOptionsPanel();
-  await nextFrame();
-  void warmupBackgroundRemoval();
-  
-  try {
-    const sourceBlob = img.processed
-      ? await fetch(img.processed).then(r => r.blob())
-      : img.file;
-    const blob = await removeBackgroundInWorker(sourceBlob, img);
-    
-    if (blob) {
-      img.processed && URL.revokeObjectURL(img.processed);
-      img.processed = URL.createObjectURL(blob);
-      img.progress = 100;
-      renderBackgroundRemovalProgress(img);
-    }
-  } catch (err) {
-    console.error('Background removal failed:', err);
-    alert('Error al eliminar el fondo. Intentalo de nuevo.');
-  } finally {
-    img.isProcessing = false;
-    updateAllViews();
-    updateOptionsPanel();
-  }
-}
-
-// ============ PDF (Simplificado) ============
-async function rotateImage(id) {
-  const img = allImages.find(i => i.id === id);
-  if (!img) return;
-
-  const src = img.processed || img.url;
-  const rotated = await new Promise(resolve => {
-    const tempImg = new Image();
-    tempImg.onload = () => {
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      // Rotate 90 degrees clockwise
-      canvas.width = tempImg.height;
-      canvas.height = tempImg.width;
-      ctx.translate(canvas.width / 2, canvas.height / 2);
-      ctx.rotate(90 * Math.PI / 180);
-      ctx.drawImage(tempImg, -tempImg.width / 2, -tempImg.height / 2);
-      canvas.toBlob(blob => resolve(blob ? URL.createObjectURL(blob) : null), img.file?.type || 'image/png');
-    };
-    tempImg.onerror = () => resolve(null);
-    tempImg.src = src;
-  });
-
-  if (rotated) {
-    if (img.processed) URL.revokeObjectURL(img.processed);
-    img.processed = rotated;
-    // Swap dimensions
-    [img.width, img.height] = [img.height, img.width];
-    // Reset visual rotation as it's now baked into the image data
-    img.rotation = 0;
-    if (id === activeImageId) updateOptionsPanel();
-    updateAllViews();
-  }
-}
-
-function removeFromPdf(id) { pdfImageOrder = pdfImageOrder.filter(i => i !== id); renderPdfGrid(); updatePdfConvertButton(); }
-function clearAllPdfImages() { pdfImageOrder = []; renderPdfGrid(); updatePdfConvertButton(); }
-function updatePdfConvertButton() { if ($('#imgConvertPdfBtn')) $('#imgConvertPdfBtn').disabled = !pdfImageOrder.length; }
-
-async function convertToPdf() {
-  if (!pdfImageOrder.length) return;
-  const { jsPDF } = window.jspdf || {};
-  if (!jsPDF) return alert('PDF library not loaded');
-  
-  const format = $('input[name="imgPdfFormat"]:checked')?.value || 'uniform';
-  let doc = null;
-  
-  for (let i = 0; i < pdfImageOrder.length; i++) {
-    const img = allImages.find(im => im.id === pdfImageOrder[i]);
-    if (!img) continue;
-    
-    await new Promise(resolve => {
-      const image = new Image();
-      image.onload = () => {
-        const rot = img.rotation || 0;
-        const w = rot % 180 ? image.height : image.width;
-        const h = rot % 180 ? image.width : image.height;
-
-        if (format === 'uniform') {
-          const targetWidth = 210; // Base width in mm (A4 width)
-          const targetHeight = (h / w) * targetWidth;
-          const orientation = targetWidth > targetHeight ? 'l' : 'p';
-          
-          if (!doc) {
-            doc = new jsPDF({
-              orientation,
-              unit: 'mm',
-              format: [targetWidth, targetHeight]
-            });
-          } else {
-            doc.addPage([targetWidth, targetHeight], orientation);
-          }
-          doc.addImage(img.processed || img.url, 'PNG', 0, 0, targetWidth, targetHeight, null, 'FAST', rot);
-        } else {
-          // Standard A4 format
-          if (!doc) {
-            doc = new jsPDF('p', 'mm', 'a4');
-          } else {
-            doc.addPage('a4', 'p');
-          }
-          
-          const pw = doc.internal.pageSize.getWidth() - 20;
-          const ph = doc.internal.pageSize.getHeight() - 20;
-          const ratio = Math.min(pw / w, ph / h);
-          const finalW = w * ratio;
-          const finalH = h * ratio;
-          const x = (doc.internal.pageSize.getWidth() - finalW) / 2;
-          const y = (doc.internal.pageSize.getHeight() - finalH) / 2;
-          
-          doc.addImage(img.processed || img.url, 'PNG', x, y, finalW, finalH, null, 'FAST', rot);
-        }
-        resolve();
-      };
-      image.src = img.processed || img.url;
-    });
-  }
-  
-  if (doc) {
-    doc.save(`${$('#imgPdfFilename')?.value || 'documento'}.pdf`);
-  }
-}
-
-// ============ DOWNLOAD (Fusionado) ============
-function getExtension(img) {
-  const format = $('#imgFormatSelect')?.value;
-  if (format && format !== 'original') return format;
-  const ext = img.name.split('.').pop().toLowerCase();
-  return ['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(ext) ? ext : 'png';
-}
-
-function downloadImage() {
-  const img = allImages.find(i => i.id === activeImageId);
-  if (!img) return;
-  const a = Object.assign(document.createElement('a'), { href: img.processed || img.url, download: `${img.name.replace(/\.[^.]+$/, '')}.${getExtension(img)}` });
-  a.click();
-}
-
-function downloadAllImages() {
-  allImages.forEach((img, i) => setTimeout(() => {
-    const a = Object.assign(document.createElement('a'), { href: img.processed || img.url, download: `${img.name.replace(/\.[^.]+$/, '')}.${getExtension(img)}` });
-    a.click();
-  }, i * 500));
-}
-
-function clearAllImages() {
-  allImages.forEach(img => { img.url && URL.revokeObjectURL(img.url); img.processed && URL.revokeObjectURL(img.processed); });
-  allImages = []; activeImageId = null; pdfImageOrder = [];
-  updateAllViews(); updateOptionsPanel();
-}
-
-// ============ SETUP (Simplificado) ============
 function setupOptionsPanel() {
   $('#imgFormatSelect')?.addEventListener('change', applyFormatConversion);
-  $('#imgKeepAspectCheck')?.addEventListener('change', () => { if ($('#imgAspectLockIcon')) $('#imgAspectLockIcon').className = $('#imgKeepAspectCheck').checked ? 'fas fa-lock' : 'fas fa-lock-open'; });
-  $('#imgApplyResizeBtn')?.addEventListener('click', () => { const o = $('#imgResizeOptions'); if (o) o.style.display = o.style.display === 'none' ? 'flex' : 'none'; });
-  $('#imgApplyToActiveBtn')?.addEventListener('click', () => { applyResize(false); $('#imgResizeOptions').style.display = 'none'; });
-  $('#imgApplyToAllBtn')?.addEventListener('click', () => { applyResize(true); $('#imgResizeOptions').style.display = 'none'; });
-  $('#imgRemoveBgBtn')?.addEventListener('click', backgroundRemoval);
-  if ($('#imgQualitySlider') && $('#imgQualityValue')) {
-    $('#imgQualitySlider').value = 100; $('#imgQualityValue').textContent = '100%';
-    $('#imgQualitySlider').addEventListener('input', () => $('#imgQualityValue').textContent = $('#imgQualitySlider').value + '%');
-    $('#imgQualitySlider').addEventListener('change', async () => {
-      const img = allImages.find(i => i.id === activeImageId);
-      if (!img) return;
-      const q = parseInt($('#imgQualitySlider').value) / 100, f = $('#imgFormatSelect')?.value || 'original';
-      const c = await convertImage(img.processed || img.url, f !== 'original' ? f : (img.name.split('.').pop() || 'png'), q);
-      if (c) { img.processed && URL.revokeObjectURL(img.processed); img.processed = c; updateAllViews(); }
+  
+  $('#imgKeepAspectCheck')?.addEventListener('change', () => {
+    if ($('#imgAspectLockIcon')) $('#imgAspectLockIcon').className = $('#imgKeepAspectCheck').checked ? 'fas fa-lock' : 'fas fa-lock-open';
+  });
+  
+  // Dimension inputs
+  $('#imgWidthInput')?.addEventListener('input', () => {
+    const img = getActive();
+    if (img && $('#imgKeepAspectCheck')?.checked) {
+      $('#imgHeightInput').value = Math.round($('#imgWidthInput').value / (img.originalWidth / img.originalHeight));
+    }
+  });
+  
+  $('#imgHeightInput')?.addEventListener('input', () => {
+    const img = getActive();
+    if (img && $('#imgKeepAspectCheck')?.checked) {
+      $('#imgWidthInput').value = Math.round($('#imgHeightInput').value * (img.originalWidth / img.originalHeight));
+    }
+  });
+  
+  // Resize buttons
+  $('#imgApplyResizeBtn')?.addEventListener('click', () => {
+    const opts = $('#imgResizeOptions');
+    if (opts) opts.style.display = opts.style.display === 'none' ? 'flex' : 'none';
+  });
+  
+  $('#imgApplyToActiveBtn')?.addEventListener('click', () => {
+    applyResize(false);
+    if ($('#imgResizeOptions')) $('#imgResizeOptions').style.display = 'none';
+  });
+  
+  $('#imgApplyToAllBtn')?.addEventListener('click', () => {
+    applyResize(true);
+    if ($('#imgResizeOptions')) $('#imgResizeOptions').style.display = 'none';
+  });
+  
+  // Quality slider
+  if ($('#imgQualitySlider')) {
+    $('#imgQualitySlider').value = 100;
+    $('#imgQualityValue').textContent = '100%';
+    $('#imgQualitySlider').addEventListener('input', () => {
+      $('#imgQualityValue').textContent = $('#imgQualitySlider').value + '%';
     });
+    $('#imgQualitySlider').addEventListener('change', applyCompression);
   }
+  
+  // Target KB sync
+  $('#imgTargetSizeInput')?.addEventListener('input', () => {
+    const img = getActive();
+    if (!img) return;
+    const targetKB = parseInt($('#imgTargetSizeInput').value);
+    if (!targetKB || targetKB <= 0) return;
+    
+    const originalKB = Math.round(img.file.size / 1024);
+    // Rough heuristic: quality is roughly proportional to size ratio
+    // We cap it between 1% and 100%
+    const q = Math.min(100, Math.max(1, Math.round((targetKB / originalKB) * 100)));
+    
+    $('#imgQualitySlider').value = q;
+    $('#imgQualityValue').textContent = q + '%';
+    // We don't auto-apply on input to avoid lag, user can still move slider or we can add a debounced apply
+  });
+  
+  $('#imgTargetSizeInput')?.addEventListener('change', applyCompression);
+  
+  $('#imgRemoveBgBtn')?.addEventListener('click', backgroundRemoval);
 }
 
 function setupPreviewActions() {
@@ -691,12 +613,63 @@ function setupPreviewActions() {
 
 function setupPdfConvert() {
   $('#imgConvertPdfBtn')?.addEventListener('click', convertToPdf);
-  $('#imgPdfClearAllBtn')?.addEventListener('click', clearAllPdfImages);
-  $('#imgPdfDropZone')?.addEventListener('click', () => $('#imgPdfFileInput').click());
-  $('#imgPdfDropZone')?.addEventListener('dragover', e => { e.preventDefault(); $('.upload-zone').classList.add('drag-over'); });
-  $('#imgPdfDropZone')?.addEventListener('dragleave', () => $('.upload-zone').classList.remove('drag-over'));
-  $('#imgPdfDropZone')?.addEventListener('drop', e => { e.preventDefault(); $('.upload-zone').classList.remove('drag-over'); e.dataTransfer.files.length && handleFiles(e.dataTransfer.files, 'pdf'); });
-  $('#imgPdfFileInput')?.addEventListener('change', e => { e.target.files.length && handleFiles(e.target.files, 'pdf'); e.target.value = ''; });
+  $('#imgPdfClearAllBtn')?.addEventListener('click', clearAllPdf);
+  
+  const pdfZone = $('#imgPdfDropZone');
+  if (!pdfZone) return;
+  
+  pdfZone.onclick = () => $('#imgPdfFileInput').click();
+  pdfZone.addEventListener('dragover', e => { e.preventDefault(); pdfZone.querySelector('.upload-zone')?.classList.add('drag-over'); });
+  pdfZone.addEventListener('dragleave', () => pdfZone.querySelector('.upload-zone')?.classList.remove('drag-over'));
+  pdfZone.addEventListener('drop', e => {
+    e.preventDefault();
+    pdfZone.querySelector('.upload-zone')?.classList.remove('drag-over');
+    if (e.dataTransfer.files.length) handleFiles(e.dataTransfer.files, 'pdf');
+  });
+  
+  $('#imgPdfFileInput')?.addEventListener('change', e => {
+    if (e.target.files.length) handleFiles(e.target.files, 'pdf');
+    e.target.value = '';
+  });
+}
+
+function setupImageViewer() {
+  const viewer = $('#imageViewer'), lightbox = $('#lightboxImage'), preview = $('#imgPreview');
+  if (!viewer || !lightbox || !preview) return;
+  
+  preview.addEventListener('dblclick', () => {
+    if (!preview.src || preview.src.endsWith('#')) return;
+    lightbox.src = preview.src;
+    viewer.classList.add('active');
+  });
+  
+  const hide = () => {
+    viewer.classList.remove('active');
+    setTimeout(() => lightbox.src = '', 300);
+  };
+  
+  $('#closeImageViewer').onclick = hide;
+  viewer.onclick = e => { if (e.target === viewer || e.target.id === 'imageViewerContent') hide(); };
+  window.addEventListener('keydown', e => { if (e.key === 'Escape' && viewer.classList.contains('active')) hide(); });
+}
+
+// ============ INIT ============
+function initImgModule() {
+  setupDropZone();
+  setupFileInput();
+  setupMiniDropZones();
+  setupOptionsPanel();
+  setupPreviewActions();
+  setupPdfConvert();
+  setupImageViewer();
+  warmupBg();
+  
+  window.switchImgView = view => {
+    $$('.img-toolbar-btn').forEach(b => b.classList.toggle('active', b.dataset.imgView === view));
+    const editor = $('#imgEditorView'), pdf = $('#imgPdfView');
+    if (editor) editor.style.display = view === 'editor' ? 'block' : 'none';
+    if (pdf) pdf.style.display = view === 'pdf' ? 'block' : 'none';
+  };
 }
 
 export { initImgModule };
