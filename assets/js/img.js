@@ -7,8 +7,8 @@ let allImages = [], activeImageId = null, pdfImageOrder = [];
 const SUPPORTED_FORMATS = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif', 'image/heic', 'image/bmp', 'image/avif'];
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
-const BACKGROUND_REMOVAL_CONFIG = Object.freeze({
-  device: 'cpu', model: 'isnet_quint8', rescale: true,
+const BACKGROUND_REMOVAL_BASE_CONFIG = Object.freeze({
+  rescale: true,
   output: { format: 'image/png', quality: 1 }
 });
 
@@ -16,12 +16,23 @@ const BACKGROUND_REMOVAL_CONFIG = Object.freeze({
 let bgWarmupPromise = null, bgWorker = null, bgWorkerUrl = null, bgTaskSeq = 0;
 const bgJobs = new Map();
 let compressionTimeout = null;
+let compressionTaskSeq = 0;
 
 // ============ UTILITIES ============
 const generateId = () => 'img_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
 const nextFrame = () => new Promise(r => requestAnimationFrame(r));
 const getActive = () => allImages.find(i => i.id === activeImageId);
 const getDisplaySrc = (img) => img.compressionPreview || img.processed || img.url;
+const supportsWebGpu = () => typeof navigator !== 'undefined' && !!navigator.gpu;
+function getBackgroundRemovalConfig() {
+  const useGpu = supportsWebGpu();
+  return {
+    ...BACKGROUND_REMOVAL_BASE_CONFIG,
+    device: useGpu ? 'gpu' : 'cpu',
+    model: useGpu ? 'isnet_fp16' : 'isnet_quint8',
+    proxyToWorker: useGpu
+  };
+}
 const getExt = (img) => {
   const fmt = $('#imgFormatSelect')?.value;
   if (fmt && fmt !== 'original') return fmt;
@@ -38,11 +49,17 @@ const createBtn = (cls, icon, onclick, title = '') =>
   });
 
 // Unified image processing (resize + format + quality)
-const processImage = (src, { w, h, format, quality = 1 } = {}) => new Promise(resolve => {
+const processImage = (src, { w, h, format, quality = 1, rotation = 0 } = {}) => new Promise(resolve => {
   const img = new Image();
   img.onload = () => {
+    const normalizedRotation = ((rotation % 360) + 360) % 360;
+    const quarterTurns = normalizedRotation / 90;
+    const isQuarterTurn = Number.isInteger(quarterTurns) && quarterTurns % 2 !== 0;
+    const canvasWidth = w || img.width;
+    const canvasHeight = h || img.height;
     const canvas = Object.assign(document.createElement('canvas'), {
-      width: w || img.width, height: h || img.height
+      width: isQuarterTurn ? canvasHeight : canvasWidth,
+      height: isQuarterTurn ? canvasWidth : canvasHeight
     });
     const ctx = canvas.getContext('2d');
     
@@ -63,7 +80,13 @@ const processImage = (src, { w, h, format, quality = 1 } = {}) => new Promise(re
       ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
 
-    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    if (normalizedRotation) {
+      ctx.translate(canvas.width / 2, canvas.height / 2);
+      ctx.rotate((normalizedRotation * Math.PI) / 180);
+      ctx.drawImage(img, -canvasWidth / 2, -canvasHeight / 2, canvasWidth, canvasHeight);
+    } else {
+      ctx.drawImage(img, 0, 0, canvasWidth, canvasHeight);
+    }
     canvas.toBlob(blob => resolve(blob), mime, quality);
   };
   img.onerror = () => resolve(null);
@@ -79,24 +102,32 @@ function getBgWorker() {
     const code = `
       import { removeBackground, preload } from "https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.7.0/+esm";
       let warmupP = null;
-      const getCfg = c => c || { device:'cpu', model:'isnet_quint8', rescale:true, output:{format:'image/png',quality:1} };
+      const getCfg = c => c || { rescale:true, output:{format:'image/png',quality:1}, device:'cpu', model:'isnet_quint8', proxyToWorker:false };
       
       self.onmessage = async e => {
         const { id, type, file, config } = e.data || {};
         if (type === 'warmup') {
-          try { warmupP = warmupP || preload(getCfg(config)).catch(() => warmupP = null);
-            await warmupP; self.postMessage({ id, type:'warmup-done' });
-          } catch(err) { self.postMessage({ id, type:'error', error:err?.message }); }
+          const startedAt = performance.now();
+          try {
+            warmupP = warmupP || preload(getCfg(config)).catch(() => warmupP = null);
+            await warmupP;
+            self.postMessage({ id, type:'warmup-done', ms: performance.now() - startedAt });
+          } catch(err) {
+            self.postMessage({ id, type:'error', error:err?.message });
+          }
           return;
         }
         if (type !== 'remove') return;
+        const startedAt = performance.now();
         try {
           const blob = await removeBackground(file, {
             ...getCfg(config),
             progress: (stage, cur, total) => self.postMessage({ id, type:'progress', stage, cur, total })
           });
-          self.postMessage({ id, type:'done', blob });
-        } catch(err) { self.postMessage({ id, type:'error', error:err?.message }); }
+          self.postMessage({ id, type:'done', blob, ms: performance.now() - startedAt });
+        } catch(err) {
+          self.postMessage({ id, type:'error', error:err?.message });
+        }
       };`;
     bgWorkerUrl = URL.createObjectURL(new Blob([code], { type: 'text/javascript' }));
   }
@@ -104,23 +135,24 @@ function getBgWorker() {
   bgWorker = new Worker(bgWorkerUrl, { type: 'module' });
   
   bgWorker.onmessage = e => {
-    const { id, type, stage, cur, total, blob, error } = e.data || {};
+    const { id, type, stage, cur, total, blob, error, ms } = e.data || {};
     const job = bgJobs.get(id);
     if (!job) return;
     
     if (type === 'progress') {
-      const pct = Math.max(job.img.progress || 0, 
-        stage?.startsWith('fetch:') ? Math.min(70, (cur/total)*70) :
-        stage === 'compute:decode' ? 72 : stage === 'compute:inference' ? 84 :
-        stage === 'compute:mask' ? 92 : stage === 'compute:encode' ? 96 + (cur/total)*4 :
-        (cur/total)*100);
-      job.img.progress = Math.round(pct);
+      const rawPct = total > 0 ? Math.round((cur / total) * 100) : 0;
+      const pct = Math.max(job.img.progress || 0, rawPct);
+      job.img.progress = pct;
       updateBgProgressUI(job.img);
       return;
     }
     
     bgJobs.delete(id);
-    type === 'done' ? job.resolve(blob) : job.reject(new Error(error));
+    if (type === 'done') {
+      job.resolve({ blob, ms });
+    } else {
+      job.reject(new Error(error));
+    }
   };
   
   bgWorker.onerror = () => {
@@ -138,10 +170,17 @@ function warmupBg() {
       const handler = e => {
         if (e.data?.id !== id) return;
         w.removeEventListener('message', handler);
-        e.data?.type === 'warmup-done' ? resolve() : reject(new Error(e.data?.error));
+        if (e.data?.type === 'warmup-done') {
+          if (typeof e.data?.ms === 'number') {
+            console.info(`[bg-removal] warmup ${Math.round(e.data.ms)} ms`);
+          }
+          resolve();
+        } else {
+          reject(new Error(e.data?.error));
+        }
       };
       w.addEventListener('message', handler);
-      w.postMessage({ id, type:'warmup', config: BACKGROUND_REMOVAL_CONFIG });
+      w.postMessage({ id, type:'warmup', config: getBackgroundRemovalConfig() });
     }))
     .catch(() => { bgWarmupPromise = null; });
   return bgWarmupPromise;
@@ -152,7 +191,7 @@ async function removeBg(file, img) {
   const id = ++bgTaskSeq;
   return new Promise((resolve, reject) => {
     bgJobs.set(id, { img, resolve, reject });
-    worker.postMessage({ id, type:'remove', file, config: BACKGROUND_REMOVAL_CONFIG });
+    worker.postMessage({ id, type:'remove', file, config: getBackgroundRemovalConfig() });
   });
 }
 
@@ -181,7 +220,7 @@ function loadImageData(file) {
       id: generateId(), file, url, name: file.name,
       width: img.width, height: img.height,
       originalWidth: img.width, originalHeight: img.height,
-      processed: null, compressionPreview: null, rotation: 0, cropData: null,
+      processed: null, processedSize: null, compressionPreview: null, rotation: 0, cropData: null,
       history: [], isProcessing: false, progress: 0,
       currentSize: file.size
     });
@@ -299,9 +338,16 @@ function selectImage(id) {
   }
   
   activeImageId = id;
+  const img = getActive();
   if ($('#imgQualitySlider')) {
     $('#imgQualitySlider').value = 100;
     $('#imgQualityValue').textContent = '100%';
+  }
+  if ($('#imgTargetSizeInput') && img) {
+    const kb = Math.round((img.processedSize || img.file.size) / 1024);
+    $('#imgTargetSizeInput').value = '';
+    $('#imgTargetSizeInput').max = kb;
+    $('#imgTargetSizeInput').placeholder = kb;
   }
   renderGallery(); renderPreview(); updateOptionsPanel();
 }
@@ -325,17 +371,19 @@ async function rotateImg(id) {
   
   const format = $('#imgFormatSelect')?.value;
   const targetFormat = (!format || format === 'original') ? img.file.type : format;
-  const q = parseInt($('#imgQualitySlider')?.value || 100) / 100;
+  const q = 1;
 
   const blob = await processImage(img.processed || img.url, {
-    w: img.height, h: img.width,
+    w: img.width, h: img.height,
     format: targetFormat,
-    quality: q
+    quality: q,
+    rotation: 90
   });
   
   if (blob) {
     img.processed && URL.revokeObjectURL(img.processed);
     img.processed = URL.createObjectURL(blob);
+    img.processedSize = blob.size;
     img.currentSize = blob.size;
     
     // Reset preview on structural change
@@ -389,7 +437,7 @@ async function applyFormatConversion() {
   if (!img) return;
   const format = $('#imgFormatSelect')?.value;
   const targetFormat = (!format || format === 'original') ? img.file.type : format;
-  const q = parseInt($('#imgQualitySlider')?.value || 100) / 100;
+  const q = 1;
   
   const blob = await processImage(img.processed || img.url, {
     w: img.width, h: img.height,
@@ -400,6 +448,7 @@ async function applyFormatConversion() {
   if (blob) {
     img.processed && URL.revokeObjectURL(img.processed);
     img.processed = URL.createObjectURL(blob);
+    img.processedSize = blob.size;
     img.currentSize = blob.size;
     
     // Reset preview on structural change
@@ -412,90 +461,102 @@ async function applyFormatConversion() {
   }
 }
 
-async function applyResize(all = false) {
-  const w = parseInt($('#imgWidthInput')?.value), h = parseInt($('#imgHeightInput')?.value);
-  if (!w || !h || w < 1 || h < 1) return;
-  
-  const format = $('#imgFormatSelect')?.value;
-  const q = parseInt($('#imgQualitySlider')?.value || 100) / 100;
 
-  for (const img of (all ? allImages : [getActive()].filter(Boolean))) {
-    const targetFormat = (!format || format === 'original') ? img.file.type : format;
-    const blob = await processImage(img.processed || img.url, { 
-      w, h, 
-      format: targetFormat, 
-      quality: q 
-    });
-    if (blob) {
-      img.processed && URL.revokeObjectURL(img.processed);
-      img.processed = URL.createObjectURL(blob);
-      img.currentSize = blob.size;
-      img.width = w; img.height = h;
-
-      // Reset preview on structural change
-      if (img.compressionPreview) {
-        URL.revokeObjectURL(img.compressionPreview);
-        img.compressionPreview = null;
-      }
-    }
-  }
-  updateAllViews();
-}
-
-async function applyCompression(isRealTime = false) {
+async function applyCompression(isRealTime = false, source = 'slider') {
   const img = getActive();
   if (!img) return;
 
-  const targetKB = parseInt($('#imgTargetSizeInput')?.value || 0);
-  const qSlider = parseInt($('#imgQualitySlider')?.value || 100);
+  const targetKB = (source === 'kb') ? parseInt($('#imgTargetSizeInput')?.value || 0) : 0;
+  const quality = (source === 'slider') ? parseInt($('#imgQualitySlider')?.value || 100) / 100 : 0;
   
+  clearTimeout(compressionTimeout);
   if (isRealTime) {
-    clearTimeout(compressionTimeout);
-    compressionTimeout = setTimeout(() => executeCompression(img, qSlider / 100, targetKB), 150);
+    compressionTimeout = setTimeout(() => {
+      void executeCompression(img, quality, targetKB, source).catch(err => console.error('Compression failed:', err));
+    }, 150);
   } else {
-    executeCompression(img, qSlider / 100, targetKB);
+    void executeCompression(img, quality, targetKB, source).catch(err => console.error('Compression failed:', err));
   }
 }
 
-async function executeCompression(img, q, targetKB) {
+async function executeCompression(img, q, targetKB, source) {
+  const taskId = ++compressionTaskSeq;
   const format = $('#imgFormatSelect')?.value;
   const targetFormat = (!format || format === 'original') ? img.file.type : format;
+  const sourceSize = img.processedSize || img.file.size;
+  const sourceSrc = img.processed || img.url;
   
-  if (q >= 1 && targetKB <= 0) {
+  // Reset if max quality and no target size
+  if (source === 'slider' && q >= 1) {
     if (img.compressionPreview) {
       URL.revokeObjectURL(img.compressionPreview);
       img.compressionPreview = null;
+      img.currentSize = sourceSize;
     }
     return updateAllViews();
   }
 
-  let blob = await processImage(img.processed || img.url, { 
-    w: img.width, h: img.height,
-    format: targetFormat, 
-    quality: q 
-  });
+  let finalBlob = null;
+  
+  if (source === 'kb' && targetKB > 0) {
+    // Binary search for target quality with the closest blob as fallback.
+    let minQ = 0.01, maxQ = 1, bestQ = 1;
+    let bestBlob = null;
+    let bestDiff = Number.POSITIVE_INFINITY;
+    let attempts = 0;
+    const targetBytes = targetKB * 1024;
 
-  // Simple refinement if we have a target size
-  if (blob && targetKB > 0 && Math.abs(blob.size / 1024 - targetKB) > (targetKB * 0.1)) {
-    const currentKB = blob.size / 1024;
-    let q2 = Math.min(1, Math.max(0.01, q * Math.sqrt(targetKB / currentKB)));
-    const blob2 = await processImage(img.processed || img.url, { 
-      w: img.width, h: img.height,
-      format: targetFormat, 
-      quality: q2 
-    });
-    if (blob2 && Math.abs(blob2.size / 1024 - targetKB) < Math.abs(blob.size / 1024 - targetKB)) {
-      blob = blob2;
-      q = q2;
-      $('#imgQualitySlider').value = Math.round(q * 100);
-      $('#imgQualityValue').textContent = $('#imgQualitySlider').value + '%';
+    while (attempts < 10 && taskId === compressionTaskSeq) {
+      const currentQ = (minQ + maxQ) / 2;
+      const blob = await processImage(sourceSrc, { 
+        w: img.width, h: img.height, format: targetFormat, quality: currentQ 
+      });
+      if (!blob) break;
+      
+      const diff = Math.abs(blob.size - targetBytes);
+      if (diff < bestDiff) {
+        bestDiff = diff;
+        bestBlob = blob;
+        bestQ = currentQ;
+      }
+
+      if (blob.size > targetBytes) {
+        maxQ = currentQ;
+      } else {
+        minQ = currentQ;
+      }
+
+      attempts++;
     }
+    finalBlob = bestBlob;
+    // Update slider visually
+    if ($('#imgQualitySlider')) {
+       $('#imgQualitySlider').value = Math.round(bestQ * 100);
+       $('#imgQualityValue').textContent = $('#imgQualitySlider').value + '%';
+    }
+  } else {
+    // Quality slider source
+    const quality = source === 'slider' ? q : (parseInt($('#imgQualitySlider')?.value || 100) / 100);
+    finalBlob = await processImage(sourceSrc, { 
+      w: img.width, h: img.height, format: targetFormat, quality: quality 
+    });
   }
 
-  if (blob) {
-    img.compressionPreview && URL.revokeObjectURL(img.compressionPreview);
-    img.compressionPreview = URL.createObjectURL(blob);
-    img.currentSize = blob.size;
+  if (taskId !== compressionTaskSeq) return;
+
+  if (finalBlob) {
+    // Strictly cap at source size
+    if (finalBlob.size > sourceSize) {
+      if (img.compressionPreview) {
+        URL.revokeObjectURL(img.compressionPreview);
+        img.compressionPreview = null;
+      }
+      img.currentSize = sourceSize;
+    } else {
+      img.compressionPreview && URL.revokeObjectURL(img.compressionPreview);
+      img.compressionPreview = URL.createObjectURL(finalBlob);
+      img.currentSize = finalBlob.size;
+    }
     updateAllViews();
   }
 }
@@ -511,11 +572,14 @@ async function backgroundRemoval() {
   warmupBg();
   
   try {
-    const blob = img.processed ? await fetch(img.processed).then(r => r.blob()) : img.file;
-    const result = await removeBg(blob, img);
-    if (result) {
+    const source = img.processed || img.url || img.file;
+    const startedAt = performance.now();
+    const result = await removeBg(source, img);
+    if (result?.blob) {
       img.processed && URL.revokeObjectURL(img.processed);
-      img.processed = URL.createObjectURL(result);
+      img.processed = URL.createObjectURL(result.blob);
+      img.processedSize = result.blob.size;
+      img.currentSize = result.blob.size;
       
       // Reset preview on structural change
       if (img.compressionPreview) {
@@ -525,6 +589,7 @@ async function backgroundRemoval() {
 
       img.progress = 100;
       updateBgProgressUI(img);
+      console.info(`[bg-removal] image ${img.name} ${Math.round(result.ms || (performance.now() - startedAt))} ms`);
     }
   } catch (e) {
     console.error('Background removal failed:', e);
@@ -666,51 +731,30 @@ function setupOptionsPanel() {
     }
   });
   
-  // Resize buttons
-  $('#imgApplyResizeBtn')?.addEventListener('click', () => {
-    const opts = $('#imgResizeOptions');
-    if (opts) opts.style.display = opts.style.display === 'none' ? 'flex' : 'none';
-  });
-  
-  $('#imgApplyToActiveBtn')?.addEventListener('click', () => {
-    applyResize(false);
-    if ($('#imgResizeOptions')) $('#imgResizeOptions').style.display = 'none';
-  });
-  
-  $('#imgApplyToAllBtn')?.addEventListener('click', () => {
-    applyResize(true);
-    if ($('#imgResizeOptions')) $('#imgResizeOptions').style.display = 'none';
-  });
-  
   // Quality slider
   if ($('#imgQualitySlider')) {
-    $('#imgQualitySlider').value = 100;
-    $('#imgQualityValue').textContent = '100%';
     $('#imgQualitySlider').addEventListener('input', () => {
       $('#imgQualityValue').textContent = $('#imgQualitySlider').value + '%';
-      applyCompression(true); // Real-time debounced preview
+      applyCompression(true, 'slider');
     });
-    $('#imgQualitySlider').addEventListener('change', () => applyCompression(false));
+    $('#imgQualitySlider').addEventListener('change', () => applyCompression(false, 'slider'));
   }
   
-  // Target KB sync
+  // Target KB input
   $('#imgTargetSizeInput')?.addEventListener('input', () => {
-    const img = getActive();
-    if (!img) return;
-    const targetKB = parseInt($('#imgTargetSizeInput').value);
-    if (!targetKB || targetKB <= 0) return;
-    
-    const originalKB = Math.round(img.file.size / 1024);
-    // Rough heuristic: quality is roughly proportional to size ratio
-    // We cap it between 1% and 100%
-    const q = Math.min(100, Math.max(1, Math.round((targetKB / originalKB) * 100)));
-    
-    $('#imgQualitySlider').value = q;
-    $('#imgQualityValue').textContent = q + '%';
-    applyCompression(true); // Real-time debounced preview
+    const rawValue = $('#imgTargetSizeInput').value;
+    if (rawValue === '') {
+      clearTimeout(compressionTimeout);
+      return;
+    }
+
+    if (Number.isNaN(parseInt(rawValue)) || parseInt(rawValue) < 1) {
+      clearTimeout(compressionTimeout);
+      return;
+    }
   });
   
-  $('#imgTargetSizeInput')?.addEventListener('change', () => applyCompression(false));
+  $('#imgTargetSizeInput')?.addEventListener('change', () => applyCompression(false, 'kb'));
   
   $('#imgRemoveBgBtn')?.addEventListener('click', backgroundRemoval);
 }
