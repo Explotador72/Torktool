@@ -1059,8 +1059,9 @@ body {
   }
 
   .main-content {
-    padding: 64px 16px 80px;
-    height: 100vh;
+    padding: 64px 16px 132px;
+    height: auto;
+    min-height: 100vh;
     overflow-y: auto;
   }
 
@@ -1070,8 +1071,6 @@ body {
     height: auto;
     min-height: 0;
     gap: 16px;
-    display: flex;
-    flex-direction: column;
   }
 
   .img-preview-area {
@@ -1114,9 +1113,12 @@ body {
 
   .img-options-panel {
     order: 3;
+    display: flex;
     flex-direction: column;
     gap: 16px;
     height: auto;
+    max-height: none;
+    min-height: fit-content;
     overflow: visible;
   }
 
