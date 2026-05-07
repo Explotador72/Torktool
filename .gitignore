@@ -4,3 +4,6 @@ build/TorkTool/
 __pycache__/
 TorkTool.zip
 .agents/
+node_modules/
+build-test/
+dist-test/

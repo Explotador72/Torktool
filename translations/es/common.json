@@ -17,7 +17,7 @@
   },
   "sidebar": {
     "media": "Media Downloader",
-    "pdf": "IMG → PDF",
+    "pdf": "IMG",
     "transcriber": "Audio a Texto"
   },
   "media": {
@@ -85,6 +85,7 @@
     "width": "Ancho",
     "height": "Alto",
     "keep_aspect": "Mantener proporción",
+    "apply": "Aplicar",
     "apply_all": "Aplicar a todas",
     "compress": "Compresión",
     "target_kb": "Tamaño objetivo",
@@ -92,7 +93,9 @@
     "remove_bg": "Eliminar Fondo",
     "remove_bg_btn": "Eliminar fondo automáticamente",
     "remove_watermark": "Eliminar Marca",
-    "watermark_select": "Seleccionar área"
+    "watermark_select": "Seleccionar área",
+    "tab_editor": "Editor",
+    "tab_pdf": "Convertir a PDF"
   },
   "transcriber": {
     "title": "Audio a Texto",

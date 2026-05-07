@@ -36,6 +36,7 @@ function build() {
   copyRecursive(path.join(root, 'translations'), path.join(output, 'translations'));
   fs.copyFileSync(path.join(root, 'main.py'), path.join(output, 'main.py'));
   fs.copyFileSync(path.join(root, 'requirements.txt'), path.join(output, 'requirements.txt'));
+  fs.copyFileSync(path.join(root, 'robots.txt'), path.join(output, 'robots.txt'));
 
   const template = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 
@@ -59,19 +60,48 @@ function build() {
     return `${key.slice(0, separatorIndex)}.${key.slice(separatorIndex + 1).replace(/-/g, '_')}`;
   }
 
+  function generateHreflangLinks(currentLanguage) {
+    let hreflang = '';
+    languages.forEach(lang => {
+      const url = lang === 'en' ? 'https://torktool.roftcore.work/' : `https://torktool.roftcore.work/${lang}/`;
+      hreflang += `<link rel="alternate" hreflang="${lang}" href="${url}" />\n    `;
+    });
+    return hreflang.trim();
+  }
+
+  function generateSitemap() {
+    const urls = [
+      { loc: 'https://torktool.roftcore.work/', lang: 'en', priority: '1.0' },
+      { loc: 'https://torktool.roftcore.work/es/', lang: 'es', priority: '0.8' }
+    ];
+
+    const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  ${urls.map(url => `
+  <url>
+    <loc>${url.loc}</loc>
+    <lastmod>${new Date().toISOString().split('T')[0]}</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>${url.priority}</priority>
+  </url>`).join('')}
+</urlset>`;
+
+    fs.writeFileSync(path.join(output, 'sitemap.xml'), sitemap, 'utf8');
+  }
+
   function renderHtml(source, dictionary, language) {
     const flat = flattenDictionary(dictionary);
-    const html = source
+    let html = source
       .replace(/<html lang="[^"]*">/, `<html lang="${language}">`)
       .replace(/\{\{([\w.-]+)\}\}/g, (_, key) => {
         const normalizedKey = flat[key] !== undefined ? key : normalizeTemplateKey(key);
         return flat[normalizedKey] !== undefined ? String(flat[normalizedKey]) : `{{${key}}}`;
       });
 
-    // Remove i18n-loader dependency from production build
-    return html
-      .replace('<script type="module" src="assets/js/i18n-loader.js"></script>', '')
-      .replace('</head>', `
+    // Add hreflang and og:image
+    const hreflangLinks = generateHreflangLinks(language);
+    html = html.replace('</head>', `
+    ${hreflangLinks}
     <script>
       window.i18n = {
         t: (key) => {
@@ -81,7 +111,9 @@ function build() {
         ready: Promise.resolve()
       };
     </script>
-</head>`);
+  </head>`);
+
+    return html;
   }
 
   languages.forEach((language) => {
@@ -96,6 +128,9 @@ function build() {
       fs.writeFileSync(path.join(output, language, `${language}.html`), html, 'utf8');
     }
   });
+
+  // Generate sitemap
+  generateSitemap();
 
   console.log(`Production bundle generated at ${output}`);
 }

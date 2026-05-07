@@ -5,6 +5,28 @@ spotify_hiddenimports = [
     'spotify_scraper.extractors.playlist',
 ]
 
+heavy_excludes = [
+    'whisper',
+    'torch',
+    'torchaudio',
+    'torchvision',
+    'transformers',
+    'triton',
+    'xformers',
+    'lightning_fabric',
+    'pytorch_lightning',
+    'scipy',
+    'pandas',
+    'matplotlib',
+    'IPython',
+    'jupyter',
+    'pygame',
+    'playwright',
+    'selenium',
+    'webdriver_manager',
+    'aspose',
+]
+
 a = Analysis(
     ['main.py'],
     pathex=[],
@@ -14,7 +36,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=['tkinter'],
+    excludes=['tkinter', *heavy_excludes],
     noarchive=False,
     optimize=0,
 )
@@ -40,14 +62,4 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-)
-
-coll = COLLECT(
-    exe,
-    a.binaries,
-    a.datas,
-    strip=False,
-    upx=False,
-    upx_exclude=[],
-    name='TorkTool',
 )

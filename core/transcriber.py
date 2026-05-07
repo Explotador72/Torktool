@@ -1,26 +1,35 @@
-import os
-import threading
-from pathlib import Path
-from core.config import logger, WORKING_DIR
-
-# Optional imports for transcription
-try:
-    import whisper
-except ImportError:
-    whisper = None
+import importlib
+from core.config import logger
 
 class AudioTranscriber:
     def __init__(self):
         self.model = None
         self._loading = False
+        self._whisper = None
+        self._whisper_checked = False
+
+    def _get_whisper_module(self):
+        if self._whisper_checked:
+            return self._whisper
+
+        self._whisper_checked = True
+        try:
+            self._whisper = importlib.import_module("whisper")
+        except ImportError:
+            self._whisper = None
+        return self._whisper
 
     def is_available(self):
-        return whisper is not None
+        return self._get_whisper_module() is not None
 
     def _load_model(self):
         if self.model is None and not self._loading:
             self._loading = True
             try:
+                whisper = self._get_whisper_module()
+                if whisper is None:
+                    logger.warning("Whisper no esta disponible en este entorno.")
+                    return
                 logger.info("Cargando modelo Whisper (base)... esto puede tardar la primera vez.")
                 # We use 'base' as it's a good balance between speed and accuracy for desktop
                 self.model = whisper.load_model("base")

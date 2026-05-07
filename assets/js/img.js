@@ -1,878 +1,829 @@
-/**
- * Image Processing Module - Client-side image editing
- */
+// ============ IMAGE PROCESSING MODULE (Optimized) ============
 
-let images = [];
-let activeImageId = null;
+// State
+let allImages = [], activeImageId = null, pdfImageOrder = [];
 
+// Constants
 const SUPPORTED_FORMATS = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif', 'image/heic', 'image/bmp', 'image/avif'];
+const $ = (sel) => document.querySelector(sel);
+const $$ = (sel) => document.querySelectorAll(sel);
+const BACKGROUND_REMOVAL_BASE_CONFIG = Object.freeze({
+  rescale: true,
+  output: { format: 'image/png', quality: 1 }
+});
 
-function initImgModule() {
-  setupDropZone();
-  setupFileInput();
-  setupOptionsPanel();
-  setupPreviewActions();
-  setupMiniDropZones();
+// Background Removal State
+let bgWarmupPromise = null, bgWorker = null, bgWorkerUrl = null, bgTaskSeq = 0;
+const bgJobs = new Map();
+let compressionTimeout = null;
+let compressionTaskSeq = 0;
+
+// ============ UTILITIES ============
+const generateId = () => 'img_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+const nextFrame = () => new Promise(r => requestAnimationFrame(r));
+const getActive = () => allImages.find(i => i.id === activeImageId);
+const getDisplaySrc = (img) => img.compressionPreview || img.processed || img.url;
+const supportsWebGpu = () => typeof navigator !== 'undefined' && !!navigator.gpu;
+function getBackgroundRemovalConfig() {
+  const useGpu = supportsWebGpu();
+  return {
+    ...BACKGROUND_REMOVAL_BASE_CONFIG,
+    device: useGpu ? 'gpu' : 'cpu',
+    model: useGpu ? 'isnet_fp16' : 'isnet_quint8',
+    proxyToWorker: useGpu
+  };
 }
+const getExt = (img) => {
+  const fmt = $('#imgFormatSelect')?.value;
+  if (fmt && fmt !== 'original') return fmt;
+  const ext = img.name.split('.').pop().toLowerCase();
+  return ['png','jpg','jpeg','webp','gif'].includes(ext) ? ext : 'png';
+};
 
-function generateId() {
-  return 'img_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-}
-
-async function setupDropZone() {
-  const dropZone = document.getElementById('imgDropZone');
-  if (!dropZone) return;
-
-  dropZone.addEventListener('click', () => {
-    document.getElementById('imgFileInput').click();
+// Button factory
+const createBtn = (cls, icon, onclick, title = '') => 
+  Object.assign(document.createElement('button'), {
+    className: cls, title, type: 'button',
+    innerHTML: icon.startsWith('fa-') ? `<i class="fas ${icon}"></i>` : icon,
+    onclick
   });
 
-  dropZone.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    dropZone.classList.add('drag-over');
-  });
-
-  dropZone.addEventListener('dragleave', () => {
-    dropZone.classList.remove('drag-over');
-  });
-
-  dropZone.addEventListener('drop', (e) => {
-    e.preventDefault();
-    dropZone.classList.remove('drag-over');
-    const files = e.dataTransfer.files;
-    if (files.length) handleFiles(files);
-  });
-}
-
-function setupFileInput() {
-  const fileInput = document.getElementById('imgFileInput');
-  if (!fileInput) return;
-
-  fileInput.addEventListener('change', (e) => {
-    if (e.target.files.length) handleFiles(e.target.files);
-  });
-}
-
-function setupMiniDropZones() {
-  const miniDropZone = document.getElementById('imgMiniDropZone');
-  const compactDropZone = document.getElementById('imgCompactDropZone');
-
-  [miniDropZone, compactDropZone].forEach(zone => {
-    if (!zone) return;
-
-    zone.addEventListener('click', () => {
-      document.getElementById('imgFileInput').click();
+// Unified image processing (resize + format + quality)
+const processImage = (src, { w, h, format, quality = 1, rotation = 0 } = {}) => new Promise(resolve => {
+  const img = new Image();
+  img.onload = () => {
+    const normalizedRotation = ((rotation % 360) + 360) % 360;
+    const quarterTurns = normalizedRotation / 90;
+    const isQuarterTurn = Number.isInteger(quarterTurns) && quarterTurns % 2 !== 0;
+    const canvasWidth = w || img.width;
+    const canvasHeight = h || img.height;
+    const canvas = Object.assign(document.createElement('canvas'), {
+      width: isQuarterTurn ? canvasHeight : canvasWidth,
+      height: isQuarterTurn ? canvasWidth : canvasHeight
     });
-
-    zone.addEventListener('dragover', (e) => {
-      e.preventDefault();
-      zone.classList.add('drag-over');
-    });
-
-    zone.addEventListener('dragleave', () => {
-      zone.classList.remove('drag-over');
-    });
-
-    zone.addEventListener('drop', (e) => {
-      e.preventDefault();
-      zone.classList.remove('drag-over');
-      const files = e.dataTransfer.files;
-      if (files.length) handleFiles(files);
-    });
-  });
-}
-
-async function handleFiles(files) {
-  const validFiles = Array.from(files).filter(file => {
-    if (file.type === 'image/heic') return true;
-    if (SUPPORTED_FORMATS.includes(file.type)) return true;
-    return false;
-  });
-
-  if (validFiles.length === 0) return;
-
-  for (const file of validFiles) {
-    let processedFile = file;
-
-    if (file.name.toLowerCase().endsWith('.heic') || file.type === 'image/heic') {
-      try {
-        const blob = await heic2any({ blob: file, toType: 'image/png' });
-        processedFile = new File([blob], file.name.replace(/\.heic$/i, '.png'), { type: 'image/png' });
-      } catch (err) {
-        console.error('HEIC conversion failed:', err);
-        continue;
-      }
+    const ctx = canvas.getContext('2d');
+    
+    // Normalize format
+    let mime = format || 'image/png';
+    if (mime && !mime.includes('/')) {
+      mime = `image/${mime.replace('jpg', 'jpeg')}`;
+    }
+    
+    // If quality < 1 and format is PNG, we must use a lossy format (JPEG/WebP)
+    if (quality < 1 && mime === 'image/png') {
+      mime = 'image/jpeg';
     }
 
-    const imageData = await loadImageData(processedFile);
-    if (imageData) {
-      images.push(imageData);
+    // Handle background for JPEG (transparency to white)
+    if (mime === 'image/jpeg') {
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
+
+    if (normalizedRotation) {
+      ctx.translate(canvas.width / 2, canvas.height / 2);
+      ctx.rotate((normalizedRotation * Math.PI) / 180);
+      ctx.drawImage(img, -canvasWidth / 2, -canvasHeight / 2, canvasWidth, canvasHeight);
+    } else {
+      ctx.drawImage(img, 0, 0, canvasWidth, canvasHeight);
+    }
+    canvas.toBlob(blob => resolve(blob), mime, quality);
+  };
+  img.onerror = () => resolve(null);
+  img.src = src;
+});
+
+// ============ BACKGROUND REMOVAL WORKER ============
+function getBgWorker() {
+  if (bgWorker) return Promise.resolve(bgWorker);
+  if (typeof Worker === 'undefined') return Promise.reject(new Error('Web Workers not supported'));
+
+  if (!bgWorkerUrl) {
+    const code = `
+      import { removeBackground, preload } from "https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.7.0/+esm";
+      let warmupP = null;
+      const getCfg = c => c || { rescale:true, output:{format:'image/png',quality:1}, device:'cpu', model:'isnet_quint8', proxyToWorker:false };
+      
+      self.onmessage = async e => {
+        const { id, type, file, config } = e.data || {};
+        if (type === 'warmup') {
+          const startedAt = performance.now();
+          try {
+            warmupP = warmupP || preload(getCfg(config)).catch(() => warmupP = null);
+            await warmupP;
+            self.postMessage({ id, type:'warmup-done', ms: performance.now() - startedAt });
+          } catch(err) {
+            self.postMessage({ id, type:'error', error:err?.message });
+          }
+          return;
+        }
+        if (type !== 'remove') return;
+        const startedAt = performance.now();
+        try {
+          const blob = await removeBackground(file, {
+            ...getCfg(config),
+            progress: (stage, cur, total) => self.postMessage({ id, type:'progress', stage, cur, total })
+          });
+          self.postMessage({ id, type:'done', blob, ms: performance.now() - startedAt });
+        } catch(err) {
+          self.postMessage({ id, type:'error', error:err?.message });
+        }
+      };`;
+    bgWorkerUrl = URL.createObjectURL(new Blob([code], { type: 'text/javascript' }));
   }
 
-  updateEditorState();
-  renderGallery();
-
-  if (!activeImageId && images.length > 0) {
-    selectImage(images[0].id);
-  }
-
-  updateImageCount();
+  bgWorker = new Worker(bgWorkerUrl, { type: 'module' });
+  
+  bgWorker.onmessage = e => {
+    const { id, type, stage, cur, total, blob, error, ms } = e.data || {};
+    const job = bgJobs.get(id);
+    if (!job) return;
+    
+    if (type === 'progress') {
+      const rawPct = total > 0 ? Math.round((cur / total) * 100) : 0;
+      const pct = Math.max(job.img.progress || 0, rawPct);
+      job.img.progress = pct;
+      updateBgProgressUI(job.img);
+      return;
+    }
+    
+    bgJobs.delete(id);
+    if (type === 'done') {
+      job.resolve({ blob, ms });
+    } else {
+      job.reject(new Error(error));
+    }
+  };
+  
+  bgWorker.onerror = () => {
+    [...bgJobs.values()].forEach(j => j.reject(new Error('Worker crashed')));
+    bgJobs.clear(); bgWorker?.terminate(); bgWorker = null; bgWarmupPromise = null;
+  };
+  
+  return Promise.resolve(bgWorker);
 }
 
+function warmupBg() {
+  bgWarmupPromise = bgWarmupPromise || getBgWorker()
+    .then(w => new Promise((resolve, reject) => {
+      const id = ++bgTaskSeq;
+      const handler = e => {
+        if (e.data?.id !== id) return;
+        w.removeEventListener('message', handler);
+        if (e.data?.type === 'warmup-done') {
+          if (typeof e.data?.ms === 'number') {
+            console.info(`[bg-removal] warmup ${Math.round(e.data.ms)} ms`);
+          }
+          resolve();
+        } else {
+          reject(new Error(e.data?.error));
+        }
+      };
+      w.addEventListener('message', handler);
+      w.postMessage({ id, type:'warmup', config: getBackgroundRemovalConfig() });
+    }))
+    .catch(() => { bgWarmupPromise = null; });
+  return bgWarmupPromise;
+}
+
+async function removeBg(file, img) {
+  const worker = await getBgWorker();
+  const id = ++bgTaskSeq;
+  return new Promise((resolve, reject) => {
+    bgJobs.set(id, { img, resolve, reject });
+    worker.postMessage({ id, type:'remove', file, config: getBackgroundRemovalConfig() });
+  });
+}
+
+function updateBgProgressUI(img) {
+  const pct = img.progress || 0;
+  if (activeImageId === img.id) {
+    const bar = $('#imgBgProgressBar'), text = $('#imgBgProgressText');
+    if (bar) bar.style.width = pct + '%';
+    if (text) text.textContent = pct + '%';
+    $('#imgBgProgress').style.display = 'block';
+  }
+  const thumb = $(`.gallery-thumb[data-id="${img.id}"]`);
+  if (thumb) {
+    const tBar = thumb.querySelector('.thumb-progress-bar');
+    const tText = thumb.querySelector('.thumb-progress-text');
+    if (tBar) tBar.style.width = pct + '%';
+    if (tText) tText.textContent = pct + '%';
+  }
+}
+
+// ============ IMAGE LOADING ============
 function loadImageData(file) {
-  return new Promise((resolve) => {
-    const url = URL.createObjectURL(file);
-    const img = new Image();
-
-    img.onload = () => {
-      resolve({
-        id: generateId(),
-        file: file,
-        url: url,
-        name: file.name,
-        width: img.width,
-        height: img.height,
-        originalWidth: img.width,
-        originalHeight: img.height,
-        processed: null,
-        history: []
-      });
-    };
-
-    img.onerror = () => {
-      resolve(null);
-      URL.revokeObjectURL(url);
-    };
-
+  return new Promise(resolve => {
+    const url = URL.createObjectURL(file), img = new Image();
+    img.onload = () => resolve({
+      id: generateId(), file, url, name: file.name,
+      width: img.width, height: img.height,
+      originalWidth: img.width, originalHeight: img.height,
+      processed: null, processedSize: null, compressionPreview: null, rotation: 0, cropData: null,
+      history: [], isProcessing: false, progress: 0,
+      currentSize: file.size
+    });
+    img.onerror = () => { resolve(null); URL.revokeObjectURL(url); };
     img.src = url;
   });
 }
 
-function updateEditorState() {
-  const initialState = document.getElementById('imgInitialState');
-  const editorLayout = document.getElementById('imgEditorLayout');
+async function handleFiles(files, target = 'editor') {
+  const valid = [...files].filter(f => SUPPORTED_FORMATS.includes(f.type));
+  if (!valid.length) return;
 
-  if (images.length > 0) {
-    initialState.style.display = 'none';
-    editorLayout.style.display = 'grid';
-  } else {
-    initialState.style.display = 'flex';
-    editorLayout.style.display = 'none';
-  }
-}
+  for (const file of valid) {
+    const name = file.name.toLowerCase().replace(/\.heic$/i, '.png');
+    if (allImages.some(i => i.name.toLowerCase() === name)) continue;
 
-function renderGallery() {
-  const galleryList = document.getElementById('imgGalleryList');
-  if (!galleryList) return;
-
-  galleryList.innerHTML = '';
-
-  images.forEach((imgData, index) => {
-    const thumb = document.createElement('div');
-    thumb.className = 'gallery-thumb';
-    thumb.dataset.id = imgData.id;
-
-    if (imgData.id === activeImageId) {
-      thumb.classList.add('active');
+    let f = file;
+    if (file.name.toLowerCase().endsWith('.heic')) {
+      try {
+        const blob = await heic2any({ blob: file, toType: 'image/png' });
+        f = new File([blob], name, { type: 'image/png' });
+      } catch (e) { console.error('HEIC failed:', e); continue; }
     }
 
-    const img = document.createElement('img');
-    img.src = imgData.processed || imgData.url;
-    img.alt = imgData.name;
+    const data = await loadImageData(f);
+    if (!data) continue;
+    
+    allImages.push(data);
+    if (!pdfImageOrder.includes(data.id)) pdfImageOrder.push(data.id);
+  }
 
-    const thumbInfo = document.createElement('div');
-    thumbInfo.className = 'thumb-info';
-    thumbInfo.textContent = `${imgData.width}x${imgData.height}`;
-
-    const removeBtn = document.createElement('button');
-    removeBtn.className = 'thumb-remove';
-    removeBtn.innerHTML = '<i class="fas fa-times"></i>';
-    removeBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      removeImage(imgData.id);
-    });
-
-    thumb.appendChild(img);
-    thumb.appendChild(thumbInfo);
-    thumb.appendChild(removeBtn);
-
-    thumb.addEventListener('click', () => selectImage(imgData.id));
-
-    galleryList.appendChild(thumb);
-  });
+  updateAllViews();
+  if (target === 'editor' && !activeImageId && allImages.length) selectImage(allImages[0].id);
 }
 
-function selectImage(id) {
-  activeImageId = id;
-  renderGallery();
-  renderPreview();
-  updateOptionsPanel();
-}
-
-function renderPreview() {
-  const previewImg = document.getElementById('imgPreview');
-  const previewContainer = document.getElementById('imgPreviewContainer');
-  const downloadBtn = document.getElementById('imgDownloadBtn');
-
-  const activeImg = images.find(img => img.id === activeImageId);
-
-  if (!activeImg) {
-    if (previewImg) previewImg.src = '';
-    if (previewContainer) previewContainer.classList.add('empty');
-    if (downloadBtn) downloadBtn.disabled = true;
-    return;
-  }
-
-  const src = activeImg.processed || activeImg.url;
-  if (previewImg) {
-    previewImg.src = src;
-    previewImg.onload = () => {
-      if (previewContainer) previewContainer.classList.remove('empty');
-      if (downloadBtn) downloadBtn.disabled = false;
-    };
-  }
-
-  const originalSizeEl = document.getElementById('imgOriginalSizeValue');
-  if (originalSizeEl && activeImg.file) {
-    const sizeKB = Math.round(activeImg.file.size / 1024);
-    originalSizeEl.textContent = `${sizeKB} KB`;
-  }
-
-  updateSizeEstimate();
-}
-
-function updateImageCount() {
-  const countBadge = document.getElementById('imgCountBadge');
-  if (countBadge) countBadge.textContent = images.length;
-}
-
-function removeImage(id) {
-  const index = images.findIndex(img => img.id === id);
-  if (index === -1) return;
-
-  if (images[index].url) URL.revokeObjectURL(images[index].url);
-  if (images[index].processed) URL.revokeObjectURL(images[index].processed);
-
-  images.splice(index, 1);
-
-  if (activeImageId === id) {
-    activeImageId = images.length > 0 ? images[0].id : null;
-  }
-
-  updateEditorState();
-  renderGallery();
-  renderPreview();
-  updateImageCount();
-
-  if (images.length === 0) {
-    updateOptionsPanel();
-  }
-}
-
-function setupOptionsPanel() {
-  const formatSelect = document.getElementById('imgFormatSelect');
-  const widthInput = document.getElementById('imgWidthInput');
-  const heightInput = document.getElementById('imgHeightInput');
-  const aspectCheck = document.getElementById('imgKeepAspectCheck');
-  const aspectLock = document.getElementById('imgAspectLockIcon');
-  const applyResizeBtn = document.getElementById('imgApplyResizeBtn');
-  const qualitySlider = document.getElementById('imgQualitySlider');
-  const qualityValue = document.getElementById('imgQualityValue');
-  const targetSizeInput = document.getElementById('imgTargetSizeInput');
-  const removeBgBtn = document.getElementById('imgRemoveBgBtn');
-  const watermarkBtn = document.getElementById('imgWatermarkBtn');
-
-  if (formatSelect) {
-    formatSelect.addEventListener('change', applyFormatConversion);
-  }
-
-  if (widthInput) {
-    widthInput.addEventListener('input', () => handleDimensionChange('width'));
-  }
-
-  if (heightInput) {
-    heightInput.addEventListener('input', () => handleDimensionChange('height'));
-  }
-
-  if (aspectCheck) {
-    aspectCheck.addEventListener('change', () => {
-      if (aspectLock) {
-        aspectLock.className = aspectCheck.checked ? 'fas fa-lock' : 'fas fa-lock-open';
-      }
-    });
-  }
-
-  if (applyResizeBtn) {
-    applyResizeBtn.addEventListener('click', applyResizeToActive);
-  }
-
-  if (qualitySlider && qualityValue) {
-    qualitySlider.addEventListener('input', () => {
-      qualityValue.textContent = qualitySlider.value + '%';
-      updateSizeEstimate();
-    });
-  }
-
-  if (targetSizeInput) {
-    targetSizeInput.addEventListener('input', adjustQualityForTargetSize);
-  }
-
-  if (removeBgBtn) {
-    removeBgBtn.addEventListener('click', removeBackground);
-  }
-
-  if (watermarkBtn) {
-    watermarkBtn.addEventListener('click', showWatermarkSelector);
-  }
+// ============ UI UPDATES ============
+function updateAllViews() {
+  $('#imgInitialState').style.display = allImages.length ? 'none' : 'flex';
+  $('#imgEditorLayout').style.display = allImages.length ? 'grid' : 'none';
+  renderGallery(); renderPreview(); renderPdfGrid();
+  $('#imgCountBadge').textContent = allImages.length;
+  updatePdfBtn();
 }
 
 function updateOptionsPanel() {
-  const activeImg = images.find(img => img.id === activeImageId);
-  const widthInput = document.getElementById('imgWidthInput');
-  const heightInput = document.getElementById('imgHeightInput');
-  const removeBgBtn = document.getElementById('imgRemoveBgBtn');
-  const watermarkBtn = document.getElementById('imgWatermarkBtn');
+  const img = getActive();
+  if ($('#imgWidthInput')) $('#imgWidthInput').value = img?.width || '';
+  if ($('#imgHeightInput')) $('#imgHeightInput').value = img?.height || '';
+  $$('#imgRemoveBgBtn, #imgWatermarkBtn').forEach(b => b.disabled = !img || img.isProcessing);
+}
 
-  if (activeImg) {
-    if (widthInput) widthInput.value = activeImg.width;
-    if (heightInput) heightInput.value = activeImg.height;
-    if (removeBgBtn) removeBgBtn.disabled = false;
-    if (watermarkBtn) watermarkBtn.disabled = false;
-  } else {
-    if (widthInput) widthInput.value = '';
-    if (heightInput) heightInput.value = '';
-    if (removeBgBtn) removeBgBtn.disabled = true;
-    if (watermarkBtn) watermarkBtn.disabled = true;
+// ============ THUMBNAIL RENDERING ============
+function createThumb(img, cls = '') {
+  const div = document.createElement('div');
+  div.className = `gallery-thumb ${cls} ${img.id === activeImageId ? 'active' : ''} ${img.isProcessing ? 'processing' : ''}`;
+  div.dataset.id = img.id;
+  div.innerHTML = `
+    <img src="${getDisplaySrc(img)}" alt="${img.name}" draggable="false"
+         style="transform: rotate(${img.rotation || 0}deg)">
+    ${img.isProcessing ? `
+      <div class="thumb-progress-overlay">
+        <div class="thumb-progress-bar" style="width:${img.progress}%"></div>
+        <span class="thumb-progress-text">${img.progress}%</span>
+      </div>` : ''}
+    <div class="thumb-info">${img.width}x${img.height}</div>
+  `;
+  div.append(
+    createBtn('thumb-remove', 'fa-times', e => { e.stopPropagation(); deleteImg(img.id); }),
+    createBtn('thumb-rotate', '↻', e => { e.stopPropagation(); rotateImg(img.id); }, 'Rotar')
+  );
+  div.onclick = () => selectImage(img.id);
+  return div;
+}
+
+function renderGallery() {
+  const list = $('#imgGalleryList');
+  if (!list) return;
+  list.innerHTML = '';
+  allImages.forEach(img => list.appendChild(createThumb(img)));
+}
+
+function renderPdfGrid() {
+  const grid = $('#imgPdfGrid');
+  if (!grid) return;
+  grid.innerHTML = pdfImageOrder.length ? '' : '<div class="img-pdf-empty">No images loaded</div>';
+  
+  pdfImageOrder.forEach(id => {
+    const img = allImages.find(i => i.id === id);
+    if (!img) return;
+    const thumb = createThumb(img, 'img-pdf-thumb');
+    thumb.draggable = true;
+    thumb.ondragstart = e => { thumb.classList.add('dragging'); e.dataTransfer.setData('text/plain', id); };
+    thumb.ondragend = () => thumb.classList.remove('dragging');
+    thumb.ondragover = e => e.preventDefault();
+    thumb.ondrop = e => {
+      e.preventDefault();
+      const from = e.dataTransfer.getData('text/plain');
+      const i1 = pdfImageOrder.indexOf(from), i2 = pdfImageOrder.indexOf(id);
+      if (i1 > -1 && i2 > -1) {
+        pdfImageOrder.splice(i2, 0, pdfImageOrder.splice(i1, 1)[0]);
+        renderPdfGrid();
+      }
+    };
+    grid.appendChild(thumb);
+  });
+}
+
+// ============ IMAGE OPERATIONS ============
+function selectImage(id) {
+  // Optional: Revoke previous image preview to save memory
+  const prev = getActive();
+  if (prev && prev.id !== id && prev.compressionPreview) {
+    URL.revokeObjectURL(prev.compressionPreview);
+    prev.compressionPreview = null;
+  }
+  
+  activeImageId = id;
+  const img = getActive();
+  if ($('#imgQualitySlider')) {
+    $('#imgQualitySlider').value = 100;
+    $('#imgQualityValue').textContent = '100%';
+  }
+  if ($('#imgTargetSizeInput') && img) {
+    const kb = Math.round((img.processedSize || img.file.size) / 1024);
+    $('#imgTargetSizeInput').value = '';
+    $('#imgTargetSizeInput').max = kb;
+    $('#imgTargetSizeInput').placeholder = kb;
+  }
+  renderGallery(); renderPreview(); updateOptionsPanel();
+}
+
+function deleteImg(id) {
+  const idx = allImages.findIndex(i => i.id === id);
+  if (idx === -1) return;
+  const img = allImages[idx];
+  img.url && URL.revokeObjectURL(img.url);
+  img.processed && URL.revokeObjectURL(img.processed);
+  img.compressionPreview && URL.revokeObjectURL(img.compressionPreview);
+  allImages.splice(idx, 1);
+  pdfImageOrder = pdfImageOrder.filter(i => i !== id);
+  if (activeImageId === id) activeImageId = allImages[0]?.id || null;
+  updateAllViews();
+}
+
+async function rotateImg(id) {
+  const img = allImages.find(i => i.id === id);
+  if (!img) return;
+  
+  const format = $('#imgFormatSelect')?.value;
+  const targetFormat = (!format || format === 'original') ? img.file.type : format;
+  const q = 1;
+
+  const blob = await processImage(img.processed || img.url, {
+    w: img.width, h: img.height,
+    format: targetFormat,
+    quality: q,
+    rotation: 90
+  });
+  
+  if (blob) {
+    img.processed && URL.revokeObjectURL(img.processed);
+    img.processed = URL.createObjectURL(blob);
+    img.processedSize = blob.size;
+    img.currentSize = blob.size;
+    
+    // Reset preview on structural change
+    if (img.compressionPreview) {
+      URL.revokeObjectURL(img.compressionPreview);
+      img.compressionPreview = null;
+    }
+
+    [img.width, img.height] = [img.height, img.width];
+    img.rotation = 0;
+    updateAllViews();
   }
 }
 
-function handleDimensionChange(changed) {
-  const activeImg = images.find(img => img.id === activeImageId);
-  if (!activeImg) return;
-
-  const widthInput = document.getElementById('imgWidthInput');
-  const heightInput = document.getElementById('imgHeightInput');
-  const aspectCheck = document.getElementById('imgKeepAspectCheck');
-
-  if (!aspectCheck?.checked) return;
-
-  const ratio = activeImg.originalWidth / activeImg.originalHeight;
-
-  if (changed === 'width' && widthInput?.value) {
-    const newWidth = parseInt(widthInput.value);
-    if (heightInput) heightInput.value = Math.round(newWidth / ratio);
-  } else if (changed === 'height' && heightInput?.value) {
-    const newHeight = parseInt(heightInput.value);
-    if (widthInput) widthInput.value = Math.round(newHeight * ratio);
-  }
-}
-
-async function applyFormatConversion() {
-  const activeImg = images.find(img => img.id === activeImageId);
-  if (!activeImg) return;
-
-  const formatSelect = document.getElementById('imgFormatSelect');
-  const targetFormat = formatSelect?.value || 'original';
-
-  if (targetFormat === 'original') {
-    activeImg.processed = null;
-    renderPreview();
-    renderGallery();
+function renderPreview() {
+  const preview = $('#imgPreview'), container = $('#imgPreviewContainer');
+  const img = getActive();
+  
+  if (!img) {
+    if (preview) { preview.src = ''; preview.style.display = 'none'; }
+    if (container) container.classList.add('empty');
+    if ($('#imgDownloadBtn')) $('#imgDownloadBtn').disabled = true;
     return;
   }
+  
+  if (preview) {
+    preview.src = getDisplaySrc(img);
+    preview.style.display = 'block';
+    preview.style.transform = `rotate(${img.rotation || 0}deg)`;
+    preview.style.opacity = img.isProcessing ? '0.5' : '1';
+  }
+  if (container) container.classList.remove('empty');
+  if ($('#imgDownloadBtn')) $('#imgDownloadBtn').disabled = false;
+  
+  const sizeEl = $('#imgOriginalSizeValue');
+  if (sizeEl && img.file) {
+    const origKB = Math.round(img.file.size / 1024);
+    const currKB = Math.round((img.currentSize || img.file.size) / 1024);
+    sizeEl.innerHTML = `${origKB} KB ${currKB !== origKB ? `→ <strong>${currKB} KB</strong>` : ''}`;
+  }
+  
+  // Progress
+  const progress = $('#imgBgProgress');
+  if (progress) progress.style.display = img.isProcessing ? 'block' : 'none';
+  if (img.isProcessing) updateBgProgressUI(img);
+}
 
-  const currentSrc = activeImg.processed || activeImg.url;
-  const converted = await convertImageFormat(currentSrc, targetFormat);
+// ============ FORMAT, RESIZE & COMPRESSION ============
+async function applyFormatConversion() {
+  const img = getActive();
+  if (!img) return;
+  const format = $('#imgFormatSelect')?.value;
+  const targetFormat = (!format || format === 'original') ? img.file.type : format;
+  const q = 1;
+  
+  const blob = await processImage(img.processed || img.url, {
+    w: img.width, h: img.height,
+    format: targetFormat, 
+    quality: q
+  });
+  
+  if (blob) {
+    img.processed && URL.revokeObjectURL(img.processed);
+    img.processed = URL.createObjectURL(blob);
+    img.processedSize = blob.size;
+    img.currentSize = blob.size;
+    
+    // Reset preview on structural change
+    if (img.compressionPreview) {
+      URL.revokeObjectURL(img.compressionPreview);
+      img.compressionPreview = null;
+    }
 
-  if (converted) {
-    if (activeImg.processed) URL.revokeObjectURL(activeImg.processed);
-    activeImg.processed = converted;
-    renderPreview();
-    renderGallery();
+    updateAllViews();
   }
 }
 
-function convertImageFormat(src, format) {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0);
 
-      const mimeType = `image/${format}`;
-      canvas.toBlob((blob) => {
-        if (blob) {
-          const url = URL.createObjectURL(blob);
-          resolve(url);
-        } else {
-          resolve(null);
-        }
-      }, mimeType, 0.92);
-    };
-    img.onerror = () => resolve(null);
-    img.src = src;
-  });
-}
+async function applyCompression(isRealTime = false, source = 'slider') {
+  const img = getActive();
+  if (!img) return;
 
-async function applyResizeToActive() {
-  const activeImg = images.find(img => img.id === activeImageId);
-  if (!activeImg) return;
-
-  const widthInput = document.getElementById('imgWidthInput');
-  const heightInput = document.getElementById('imgHeightInput');
-
-  const newWidth = parseInt(widthInput?.value);
-  const newHeight = parseInt(heightInput?.value);
-
-  if (!newWidth || !newHeight || newWidth < 1 || newHeight < 1) return;
-
-  const resized = await resizeImage(activeImg.processed || activeImg.url, newWidth, newHeight);
-
-  if (resized) {
-    if (activeImg.processed) URL.revokeObjectURL(activeImg.processed);
-    activeImg.processed = resized;
-    activeImg.width = newWidth;
-    activeImg.height = newHeight;
-    renderPreview();
-    renderGallery();
-    updateOptionsPanel();
+  const targetKB = (source === 'kb') ? parseInt($('#imgTargetSizeInput')?.value || 0) : 0;
+  const quality = (source === 'slider') ? parseInt($('#imgQualitySlider')?.value || 100) / 100 : 0;
+  
+  clearTimeout(compressionTimeout);
+  if (isRealTime) {
+    compressionTimeout = setTimeout(() => {
+      void executeCompression(img, quality, targetKB, source).catch(err => console.error('Compression failed:', err));
+    }, 150);
+  } else {
+    void executeCompression(img, quality, targetKB, source).catch(err => console.error('Compression failed:', err));
   }
 }
 
-function resizeImage(src, width, height) {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0, width, height);
+async function executeCompression(img, q, targetKB, source) {
+  const taskId = ++compressionTaskSeq;
+  const format = $('#imgFormatSelect')?.value;
+  const targetFormat = (!format || format === 'original') ? img.file.type : format;
+  const sourceSize = img.processedSize || img.file.size;
+  const sourceSrc = img.processed || img.url;
+  
+  // Reset if max quality and no target size
+  if (source === 'slider' && q >= 1) {
+    if (img.compressionPreview) {
+      URL.revokeObjectURL(img.compressionPreview);
+      img.compressionPreview = null;
+      img.currentSize = sourceSize;
+    }
+    return updateAllViews();
+  }
 
-      canvas.toBlob((blob) => {
-        if (blob) {
-          resolve(URL.createObjectURL(blob));
-        } else {
-          resolve(null);
-        }
-      }, img.type || 'image/png');
-    };
-    img.onerror = () => resolve(null);
-    img.src = src;
-  });
-}
+  let finalBlob = null;
+  
+  if (source === 'kb' && targetKB > 0) {
+    // Binary search for target quality with the closest blob as fallback.
+    let minQ = 0.01, maxQ = 1, bestQ = 1;
+    let bestBlob = null;
+    let bestDiff = Number.POSITIVE_INFINITY;
+    let attempts = 0;
+    const targetBytes = targetKB * 1024;
 
-function updateSizeEstimate() {
-  const activeImg = images.find(img => img.id === activeImageId);
-  if (!activeImg) return;
-
-  const qualitySlider = document.getElementById('imgQualitySlider');
-  const quality = parseInt(qualitySlider?.value || 90) / 100;
-
-  const img = new Image();
-  img.onload = () => {
-    const canvas = document.createElement('canvas');
-    canvas.width = activeImg.width;
-    canvas.height = activeImg.height;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(img, 0, 0);
-
-    canvas.toBlob((blob) => {
-      if (blob) {
-        const estimatedKB = Math.round(blob.size / 1024);
-        const qualityValue = document.getElementById('imgQualityValue');
-        if (qualityValue) {
-          const originalSize = activeImg.file.size / 1024;
-          qualityValue.textContent = `${Math.round(quality * 100)}% (~${estimatedKB} KB)`;
-        }
+    while (attempts < 10 && taskId === compressionTaskSeq) {
+      const currentQ = (minQ + maxQ) / 2;
+      const blob = await processImage(sourceSrc, { 
+        w: img.width, h: img.height, format: targetFormat, quality: currentQ 
+      });
+      if (!blob) break;
+      
+      const diff = Math.abs(blob.size - targetBytes);
+      if (diff < bestDiff) {
+        bestDiff = diff;
+        bestBlob = blob;
+        bestQ = currentQ;
       }
-    }, 'image/jpeg', quality);
-  };
-  img.src = activeImg.processed || activeImg.url;
+
+      if (blob.size > targetBytes) {
+        maxQ = currentQ;
+      } else {
+        minQ = currentQ;
+      }
+
+      attempts++;
+    }
+    finalBlob = bestBlob;
+    // Update slider visually
+    if ($('#imgQualitySlider')) {
+       $('#imgQualitySlider').value = Math.round(bestQ * 100);
+       $('#imgQualityValue').textContent = $('#imgQualitySlider').value + '%';
+    }
+  } else {
+    // Quality slider source
+    const quality = source === 'slider' ? q : (parseInt($('#imgQualitySlider')?.value || 100) / 100);
+    finalBlob = await processImage(sourceSrc, { 
+      w: img.width, h: img.height, format: targetFormat, quality: quality 
+    });
+  }
+
+  if (taskId !== compressionTaskSeq) return;
+
+  if (finalBlob) {
+    // Strictly cap at source size
+    if (finalBlob.size > sourceSize) {
+      if (img.compressionPreview) {
+        URL.revokeObjectURL(img.compressionPreview);
+        img.compressionPreview = null;
+      }
+      img.currentSize = sourceSize;
+    } else {
+      img.compressionPreview && URL.revokeObjectURL(img.compressionPreview);
+      img.compressionPreview = URL.createObjectURL(finalBlob);
+      img.currentSize = finalBlob.size;
+    }
+    updateAllViews();
+  }
 }
 
-function adjustQualityForTargetSize() {
-  const targetSizeInput = document.getElementById('imgTargetSizeInput');
-  const targetKB = parseInt(targetSizeInput?.value);
-
-  if (!targetKB || targetKB < 1) return;
-
-  const activeImg = images.find(img => img.id === activeImageId);
-  if (!activeImg) return;
-
-  const img = new Image();
-  img.onload = () => {
-    const canvas = document.createElement('canvas');
-    canvas.width = activeImg.width;
-    canvas.height = activeImg.height;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(img, 0, 0);
-
-    let quality = 0.9;
-    let blob;
-
-    const attemptCompress = () => {
-      canvas.toBlob((b) => {
-        blob = b;
-        const currentKB = b.size / 1024;
-
-        if (currentKB > targetKB && quality > 0.1) {
-          quality -= 0.1;
-          attemptCompress();
-        } else {
-          const slider = document.getElementById('imgQualitySlider');
-          const valueEl = document.getElementById('imgQualityValue');
-          if (slider) slider.value = Math.round(quality * 100);
-          if (valueEl) valueEl.textContent = `${Math.round(quality * 100)}% (~${Math.round(currentKB)} KB)`;
-        }
-      }, 'image/jpeg', quality);
-    };
-
-    attemptCompress();
-  };
-  img.src = activeImg.processed || activeImg.url;
-}
-
-async function removeBackground() {
-  const activeImg = images.find(img => img.id === activeImageId);
-  if (!activeImg) return;
-
-  const progressContainer = document.getElementById('imgBgProgress');
-  const progressBar = document.getElementById('imgBgProgressBar');
-  const progressText = document.getElementById('imgBgProgressText');
-  const removeBgBtn = document.getElementById('imgRemoveBgBtn');
-
-  if (progressContainer) progressContainer.style.display = 'block';
-  if (removeBgBtn) removeBgBtn.disabled = true;
-
+// ============ BACKGROUND REMOVAL ============
+async function backgroundRemoval() {
+  const img = getActive();
+  if (!img || img.isProcessing) return;
+  
+  img.isProcessing = true; img.progress = 0;
+  updateAllViews(); updateOptionsPanel();
+  await nextFrame();
+  warmupBg();
+  
   try {
-    const src = activeImg.processed || activeImg.url;
+    const source = img.processed || img.url || img.file;
+    const startedAt = performance.now();
+    const result = await removeBg(source, img);
+    if (result?.blob) {
+      img.processed && URL.revokeObjectURL(img.processed);
+      img.processed = URL.createObjectURL(result.blob);
+      img.processedSize = result.blob.size;
+      img.currentSize = result.blob.size;
+      
+      // Reset preview on structural change
+      if (img.compressionPreview) {
+        URL.revokeObjectURL(img.compressionPreview);
+        img.compressionPreview = null;
+      }
 
-    const removeBackground = window.removeBackground;
-    if (!removeBackground) {
-      console.error('Background removal library not loaded');
+      img.progress = 100;
+      updateBgProgressUI(img);
+      console.info(`[bg-removal] image ${img.name} ${Math.round(result.ms || (performance.now() - startedAt))} ms`);
+    }
+  } catch (e) {
+    console.error('Background removal failed:', e);
+    alert('Error al eliminar el fondo. Inténtalo de nuevo.');
+  } finally {
+    img.isProcessing = false;
+    updateAllViews(); updateOptionsPanel();
+  }
+}
+
+// ============ PDF ============
+function removeFromPdf(id) { pdfImageOrder = pdfImageOrder.filter(i => i !== id); renderPdfGrid(); updatePdfBtn(); }
+function clearAllPdf() { pdfImageOrder = []; renderPdfGrid(); updatePdfBtn(); }
+function updatePdfBtn() { if ($('#imgConvertPdfBtn')) $('#imgConvertPdfBtn').disabled = !pdfImageOrder.length; }
+
+async function convertToPdf() {
+  if (!pdfImageOrder.length || !window.jspdf?.jsPDF) return alert('PDF library not loaded');
+  
+  const { jsPDF } = window.jspdf;
+  const format = $('input[name="imgPdfFormat"]:checked')?.value || 'uniform';
+  const isA4 = format === 'a4';
+  let doc = null;
+  
+  for (let i = 0; i < pdfImageOrder.length; i++) {
+    const img = allImages.find(im => im.id === pdfImageOrder[i]);
+    if (!img) continue;
+    
+    await new Promise(resolve => {
+      const image = new Image();
+      image.onload = () => {
+        const rot = img.rotation || 0;
+        const w = rot % 180 ? image.height : image.width;
+        const h = rot % 180 ? image.width : image.height;
+        
+        if (isA4) {
+          if (!doc) doc = new jsPDF('p', 'mm', 'a4');
+          else doc.addPage();
+          const pw = 190, ph = 277;
+          const r = Math.min(pw / w, ph / h);
+          doc.addImage(getDisplaySrc(img), 'PNG', 10, 10, w * r, h * r, null, 'FAST', rot);
+        } else {
+          const tw = 210, th = (h / w) * tw;
+          if (!doc) doc = new jsPDF({ orientation: tw > th ? 'l' : 'p', unit: 'mm', format: [tw, th] });
+          else doc.addPage([tw, th]);
+          doc.addImage(getDisplaySrc(img), 'PNG', 0, 0, tw, th, null, 'FAST', rot);
+        }
+        resolve();
+      };
+      image.src = getDisplaySrc(img);
+    });
+  }
+  
+  doc?.save(`${$('#imgPdfFilename')?.value || 'documento'}.pdf`);
+}
+
+// ============ DOWNLOAD ============
+function downloadImg(img) {
+  const a = Object.assign(document.createElement('a'), {
+    href: getDisplaySrc(img),
+    download: `${img.name.replace(/\.[^.]+$/, '')}.${getExt(img)}`
+  });
+  a.click();
+}
+
+function downloadImage() { const img = getActive(); if (img) downloadImg(img); }
+
+function downloadAllImages() { allImages.forEach((img, i) => setTimeout(() => downloadImg(img), i * 500)); }
+
+function clearAllImages() {
+  allImages.forEach(img => { img.url && URL.revokeObjectURL(img.url); img.processed && URL.revokeObjectURL(img.processed); });
+  allImages = []; activeImageId = null; pdfImageOrder = [];
+  updateAllViews(); updateOptionsPanel();
+}
+
+// ============ SETUP ============
+function setupDropZone() {
+  const zone = $('#imgDropZone');
+  if (!zone) return;
+  
+  zone.onclick = () => $('#imgFileInput').click();
+  ['dragover', 'dragleave', 'drop'].forEach(ev => zone.addEventListener(ev, e => {
+    e.preventDefault(); e.stopPropagation();
+    zone.classList.toggle('drag-over', ev === 'dragover');
+    if (ev === 'drop' && e.dataTransfer.files.length) handleFiles(e.dataTransfer.files, 'editor');
+  }));
+
+  window.addEventListener('dragover', e => e.dataTransfer.types.includes('Files') && e.preventDefault());
+  window.addEventListener('drop', e => {
+    if (!e.dataTransfer.files.length || e.dataTransfer.types.includes('text/html')) return;
+    if (e.target.closest('.img-preview-container,.img-gallery,.img-pdf-grid,.gallery-thumb,.img-pdf-thumb,img,canvas')) return;
+    e.preventDefault();
+    const hasImages = [...e.dataTransfer.files].some(f => f.type.startsWith('image/'));
+    if (hasImages && $('.nav-btn.active')?.dataset.tab === 'imgpdf') {
+      handleFiles(e.dataTransfer.files, $('.img-toolbar-btn.active')?.dataset.imgView === 'pdf' ? 'pdf' : 'editor');
+    }
+  });
+}
+
+function setupMiniDropZones() {
+  ['#imgMiniDropZone', '#imgCompactDropZone'].forEach(sel => {
+    const zone = $(sel);
+    if (!zone) return;
+    zone.onclick = e => { e.stopPropagation(); $('#imgFileInput').click(); };
+    zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+    zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+    zone.addEventListener('drop', e => {
+      e.preventDefault(); zone.classList.remove('drag-over');
+      if (e.dataTransfer.files.length) handleFiles(e.dataTransfer.files, 'editor');
+    });
+  });
+}
+
+function setupFileInput() {
+  $('#imgFileInput')?.addEventListener('change', e => {
+    if (e.target.files.length) handleFiles(e.target.files, 'editor');
+    e.target.value = '';
+  });
+}
+
+function setupOptionsPanel() {
+  $('#imgFormatSelect')?.addEventListener('change', applyFormatConversion);
+  
+  $('#imgKeepAspectCheck')?.addEventListener('change', () => {
+    if ($('#imgAspectLockIcon')) $('#imgAspectLockIcon').className = $('#imgKeepAspectCheck').checked ? 'fas fa-lock' : 'fas fa-lock-open';
+  });
+  
+  // Dimension inputs
+  $('#imgWidthInput')?.addEventListener('input', () => {
+    const img = getActive();
+    if (img && $('#imgKeepAspectCheck')?.checked) {
+      $('#imgHeightInput').value = Math.round($('#imgWidthInput').value / (img.originalWidth / img.originalHeight));
+    }
+  });
+  
+  $('#imgHeightInput')?.addEventListener('input', () => {
+    const img = getActive();
+    if (img && $('#imgKeepAspectCheck')?.checked) {
+      $('#imgWidthInput').value = Math.round($('#imgHeightInput').value * (img.originalWidth / img.originalHeight));
+    }
+  });
+  
+  // Quality slider
+  if ($('#imgQualitySlider')) {
+    $('#imgQualitySlider').addEventListener('input', () => {
+      $('#imgQualityValue').textContent = $('#imgQualitySlider').value + '%';
+      applyCompression(true, 'slider');
+    });
+    $('#imgQualitySlider').addEventListener('change', () => applyCompression(false, 'slider'));
+  }
+  
+  // Target KB input
+  $('#imgTargetSizeInput')?.addEventListener('input', () => {
+    const rawValue = $('#imgTargetSizeInput').value;
+    if (rawValue === '') {
+      clearTimeout(compressionTimeout);
       return;
     }
 
-    const blob = await removeBackground(src, {
-      progress: (key, current, total) => {
-        const percent = Math.round((current / total) * 100);
-        if (progressBar) progressBar.style.width = percent + '%';
-        if (progressText) progressText.textContent = percent + '%';
-      }
-    });
-
-    if (blob) {
-      if (activeImg.processed) URL.revokeObjectURL(activeImg.processed);
-      activeImg.processed = URL.createObjectURL(blob);
-      renderPreview();
-      renderGallery();
+    if (Number.isNaN(parseInt(rawValue)) || parseInt(rawValue) < 1) {
+      clearTimeout(compressionTimeout);
+      return;
     }
-  } catch (err) {
-    console.error('Background removal failed:', err);
-  } finally {
-    if (progressContainer) progressContainer.style.display = 'none';
-    if (removeBgBtn) removeBgBtn.disabled = false;
-  }
-}
-
-function showWatermarkSelector() {
-  const activeImg = images.find(img => img.id === activeImageId);
-  if (!activeImg) return;
-
-  const previewContainer = document.getElementById('imgPreviewContainer');
-  if (!previewContainer) return;
-
-  const existingOverlay = document.getElementById('watermarkOverlay');
-  if (existingOverlay) existingOverlay.remove();
-
-  const overlay = document.createElement('div');
-  overlay.id = 'watermarkOverlay';
-  overlay.className = 'watermark-overlay';
-
-  const info = document.createElement('div');
-  info.className = 'watermark-info';
-  info.textContent = 'Draw a rectangle over the watermark area';
-
-  const applyBtn = document.createElement('button');
-  applyBtn.className = 'btn-primary btn-small';
-  applyBtn.textContent = 'Apply';
-  applyBtn.addEventListener('click', () => applyWatermarkRemoval());
-
-  const cancelBtn = document.createElement('button');
-  cancelBtn.className = 'btn-outline btn-small';
-  cancelBtn.textContent = 'Cancel';
-  cancelBtn.addEventListener('click', () => overlay.remove());
-
-  overlay.appendChild(info);
-  overlay.appendChild(applyBtn);
-  overlay.appendChild(cancelBtn);
-
-  previewContainer.style.position = 'relative';
-  previewContainer.appendChild(overlay);
-
-  let isDrawing = false;
-  let startX, startY, rect;
-
-  const previewImg = document.getElementById('imgPreview');
-  if (!previewImg) return;
-
-  const canvas = document.createElement('canvas');
-  canvas.className = 'watermark-canvas';
-  canvas.width = previewImg.offsetWidth;
-  canvas.height = previewImg.offsetHeight;
-  canvas.style.position = 'absolute';
-  canvas.style.top = '0';
-  canvas.style.left = '0';
-  canvas.style.cursor = 'crosshair';
-
-  const ctx = canvas.getContext('2d');
-
-  canvas.addEventListener('mousedown', (e) => {
-    isDrawing = true;
-    const rect = canvas.getBoundingClientRect();
-    startX = e.clientX - rect.left;
-    startY = e.clientY - rect.top;
   });
-
-  canvas.addEventListener('mousemove', (e) => {
-    if (!isDrawing) return;
-    const rect = canvas.getBoundingClientRect();
-    const currentX = e.clientX - rect.left;
-    const currentY = e.clientY - rect.top;
-
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.strokeStyle = '#6d28d9';
-    ctx.lineWidth = 2;
-    ctx.setLineDash([5, 5]);
-    ctx.strokeRect(startX, startY, currentX - startX, currentY - startY);
-    ctx.setLineDash([]);
-  });
-
-  canvas.addEventListener('mouseup', (e) => {
-    if (!isDrawing) return;
-    isDrawing = false;
-    const rect = canvas.getBoundingClientRect();
-    const endX = e.clientX - rect.left;
-    const endY = e.clientY - rect.top;
-  });
-
-  previewContainer.appendChild(canvas);
-}
-
-function applyWatermarkRemoval() {
-  const activeImg = images.find(img => img.id === activeImageId);
-  if (!activeImg) return;
-
-  const canvas = document.querySelector('.watermark-canvas');
-  if (!canvas) return;
-
-  const ctx = canvas.getContext('2d');
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-
-  let minX = canvas.width, minY = canvas.height, maxX = 0, maxY = 0;
-  let foundRect = false;
-
-  for (let y = 0; y < canvas.height; y++) {
-    for (let x = 0; x < canvas.width; x++) {
-      const alpha = imageData.data[(y * canvas.width + x) * 4 + 3];
-      if (alpha > 0) {
-        foundRect = true;
-        if (x < minX) minX = x;
-        if (x > maxX) maxX = x;
-        if (y < minY) minY = y;
-        if (y > maxY) maxY = y;
-      }
-    }
-  }
-
-  if (!foundRect || maxX <= minX || maxY <= minY) {
-    alert('Please select an area first');
-    return;
-  }
-
-  const src = activeImg.processed || activeImg.url;
-  const img = new Image();
-
-  img.onload = () => {
-    const processingCanvas = document.createElement('canvas');
-    processingCanvas.width = img.width;
-    processingCanvas.height = img.height;
-    const pCtx = processingCanvas.getContext('2d');
-    pCtx.drawImage(img, 0, 0);
-
-    const scaleX = img.width / canvas.offsetWidth;
-    const scaleY = img.height / canvas.offsetHeight;
-
-    const selMinX = Math.floor(minX * scaleX);
-    const selMinY = Math.floor(minY * scaleY);
-    const selWidth = Math.floor((maxX - minX) * scaleX);
-    const selHeight = Math.floor((maxY - minY) * scaleY);
-
-    const regionData = pCtx.getImageData(selMinX, selMinY, selWidth, selHeight);
-
-    for (let y = 0; y < selHeight; y++) {
-      for (let x = 0; x < selWidth; x++) {
-        const idx = (y * selWidth + x) * 4;
-
-        let leftPixel, rightPixel, topPixel, bottomPixel;
-
-        if (x > 0) {
-          leftPixel = {
-            r: regionData.data[idx - 4],
-            g: regionData.data[idx - 3],
-            b: regionData.data[idx - 2]
-          };
-        }
-        if (x < selWidth - 1) {
-          rightPixel = {
-            r: regionData.data[idx + 4],
-            g: regionData.data[idx + 5],
-            b: regionData.data[idx + 6]
-          };
-        }
-        if (y > 0) {
-          topPixel = {
-            r: regionData.data[idx - selWidth * 4],
-            g: regionData.data[idx - selWidth * 4 + 1],
-            b: regionData.data[idx - selWidth * 4 + 2]
-          };
-        }
-        if (y < selHeight - 1) {
-          bottomPixel = {
-            r: regionData.data[idx + selWidth * 4],
-            g: regionData.data[idx + selWidth * 4 + 1],
-            b: regionData.data[idx + selWidth * 4 + 2]
-          };
-        }
-
-        const neighbors = [leftPixel, rightPixel, topPixel, bottomPixel].filter(p => p);
-        if (neighbors.length > 0) {
-          const avgR = neighbors.reduce((s, p) => s + p.r, 0) / neighbors.length;
-          const avgG = neighbors.reduce((s, p) => s + p.g, 0) / neighbors.length;
-          const avgB = neighbors.reduce((s, p) => s + p.b, 0) / neighbors.length;
-
-          regionData.data[idx] = avgR;
-          regionData.data[idx + 1] = avgG;
-          regionData.data[idx + 2] = avgB;
-        }
-      }
-    }
-
-    pCtx.putImageData(regionData, selMinX, selMinY);
-
-    processingCanvas.toBlob((blob) => {
-      if (blob) {
-        if (activeImg.processed) URL.revokeObjectURL(activeImg.processed);
-        activeImg.processed = URL.createObjectURL(blob);
-        renderPreview();
-        renderGallery();
-
-        const overlay = document.getElementById('watermarkOverlay');
-        if (overlay) overlay.remove();
-        if (canvas) canvas.remove();
-      }
-    }, activeImg.file.type || 'image/png');
-  };
-
-  img.src = src;
+  
+  $('#imgTargetSizeInput')?.addEventListener('change', () => applyCompression(false, 'kb'));
+  
+  $('#imgRemoveBgBtn')?.addEventListener('click', backgroundRemoval);
 }
 
 function setupPreviewActions() {
-  const downloadBtn = document.getElementById('imgDownloadBtn');
-  const downloadAllBtn = document.getElementById('imgDownloadAllBtn');
-  const clearAllBtn = document.getElementById('imgClearAllBtn');
-
-  if (downloadBtn) {
-    downloadBtn.addEventListener('click', downloadImage);
-  }
-
-  if (downloadAllBtn) {
-    downloadAllBtn.addEventListener('click', downloadAllImages);
-  }
-
-  if (clearAllBtn) {
-    clearAllBtn.addEventListener('click', clearAllImages);
-  }
+  $('#imgDownloadBtn')?.addEventListener('click', downloadImage);
+  $('#imgDownloadAllBtn')?.addEventListener('click', downloadAllImages);
+  $('#imgClearAllBtn')?.addEventListener('click', clearAllImages);
 }
 
-function downloadImage() {
-  const activeImg = images.find(img => img.id === activeImageId);
-  if (!activeImg) return;
-
-  const formatSelect = document.getElementById('imgFormatSelect');
-  const targetFormat = formatSelect?.value || 'original';
-
-  const src = activeImg.processed || activeImg.url;
-  const link = document.createElement('a');
-
-  let extension = 'png';
-  if (targetFormat !== 'original') {
-    extension = targetFormat;
-  } else {
-    const parts = activeImg.name.split('.');
-    if (parts.length > 1) {
-      extension = parts.pop().toLowerCase();
-      if (!['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(extension)) {
-        extension = 'png';
-      }
-    }
-  }
-
-  link.download = `${activeImg.name.replace(/\.[^.]+$/, '')}.${extension}`;
-  link.href = src;
-  link.click();
-}
-
-function downloadAllImages() {
-  if (images.length === 0) return;
-
-  images.forEach((imgData, index) => {
-    setTimeout(() => {
-      const src = imgData.processed || imgData.url;
-      const link = document.createElement('a');
-
-      const formatSelect = document.getElementById('imgFormatSelect');
-      const targetFormat = formatSelect?.value || 'original';
-
-      let extension = 'png';
-      if (targetFormat !== 'original') {
-        extension = targetFormat;
-      } else {
-        const parts = imgData.name.split('.');
-        if (parts.length > 1) {
-          extension = parts.pop().toLowerCase();
-          if (!['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(extension)) {
-            extension = 'png';
-          }
-        }
-      }
-
-      link.download = `${imgData.name.replace(/\.[^.]+$/, '')}.${extension}`;
-      link.href = src;
-      link.click();
-    }, index * 500);
+function setupPdfConvert() {
+  $('#imgConvertPdfBtn')?.addEventListener('click', convertToPdf);
+  $('#imgPdfClearAllBtn')?.addEventListener('click', clearAllPdf);
+  
+  const pdfZone = $('#imgPdfDropZone');
+  if (!pdfZone) return;
+  
+  pdfZone.onclick = () => $('#imgPdfFileInput').click();
+  pdfZone.addEventListener('dragover', e => { e.preventDefault(); pdfZone.querySelector('.upload-zone')?.classList.add('drag-over'); });
+  pdfZone.addEventListener('dragleave', () => pdfZone.querySelector('.upload-zone')?.classList.remove('drag-over'));
+  pdfZone.addEventListener('drop', e => {
+    e.preventDefault();
+    pdfZone.querySelector('.upload-zone')?.classList.remove('drag-over');
+    if (e.dataTransfer.files.length) handleFiles(e.dataTransfer.files, 'pdf');
+  });
+  
+  $('#imgPdfFileInput')?.addEventListener('change', e => {
+    if (e.target.files.length) handleFiles(e.target.files, 'pdf');
+    e.target.value = '';
   });
 }
 
-function clearAllImages() {
-  images.forEach(img => {
-    if (img.url) URL.revokeObjectURL(img.url);
-    if (img.processed) URL.revokeObjectURL(img.processed);
+function setupImageViewer() {
+  const viewer = $('#imageViewer'), lightbox = $('#lightboxImage'), preview = $('#imgPreview');
+  if (!viewer || !lightbox || !preview) return;
+  
+  preview.addEventListener('dblclick', () => {
+    if (!preview.src || preview.src.endsWith('#')) return;
+    lightbox.src = preview.src;
+    viewer.classList.add('active');
   });
+  
+  const hide = () => {
+    viewer.classList.remove('active');
+    setTimeout(() => lightbox.src = '', 300);
+  };
+  
+  $('#closeImageViewer').onclick = hide;
+  viewer.onclick = e => { if (e.target === viewer || e.target.id === 'imageViewerContent') hide(); };
+  window.addEventListener('keydown', e => { if (e.key === 'Escape' && viewer.classList.contains('active')) hide(); });
+}
 
-  images = [];
-  activeImageId = null;
-
-  updateEditorState();
-  renderGallery();
-  renderPreview();
-  updateImageCount();
-  updateOptionsPanel();
+// ============ INIT ============
+function initImgModule() {
+  setupDropZone();
+  setupFileInput();
+  setupMiniDropZones();
+  setupOptionsPanel();
+  setupPreviewActions();
+  setupPdfConvert();
+  setupImageViewer();
+  warmupBg();
+  
+  window.switchImgView = view => {
+    $$('.img-toolbar-btn').forEach(b => b.classList.toggle('active', b.dataset.imgView === view));
+    const editor = $('#imgEditorView'), pdf = $('#imgPdfView');
+    if (editor) editor.style.display = view === 'editor' ? 'block' : 'none';
+    if (pdf) pdf.style.display = view === 'pdf' ? 'block' : 'none';
+  };
 }
 
 export { initImgModule };

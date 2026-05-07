@@ -43,6 +43,14 @@ export function getApiUrl() {
   if (storedUrl) {
     try {
       const parsed = new URL(storedUrl);
+      const currentHostIsPrivate = isPrivateHost(window.location?.hostname);
+      const storedHostIsPrivate = isPrivateHost(parsed.hostname);
+
+      if (!currentHostIsPrivate && storedHostIsPrivate) {
+        window.localStorage.removeItem('torktool.localAgentUrl');
+        return REMOTE_AGENT_URL;
+      }
+
       if (isPrivateHost(window.location?.hostname) && isPrivateHost(parsed.hostname)) {
         if (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1' || parsed.hostname === '::1') {
           return `${window.location.protocol}//${window.location.hostname}:${LOCAL_AGENT_PORT}`;

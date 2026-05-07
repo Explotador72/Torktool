@@ -96,10 +96,11 @@ if IS_WINDOWS:
             user32.CreateWindowExW(0, "BUTTON", "_", WS_TABSTOP|WS_VISIBLE|WS_CHILD|BS_PUSHBUTTON, self.WINDOW_WIDTH-86, 4, 32, 28, self.hwnd, ctypes.c_void_p(BUTTON_MINIMIZE_ID), self.h_instance, None)
             user32.CreateWindowExW(0, "BUTTON", "X", WS_TABSTOP|WS_VISIBLE|WS_CHILD|BS_PUSHBUTTON, self.WINDOW_WIDTH-46, 4, 32, 28, self.hwnd, ctypes.c_void_p(BUTTON_CLOSE_ID), self.h_instance, None)
             user32.CreateWindowExW(0, "STATIC", "TorkTool Agent activo", WS_CHILD|WS_VISIBLE|SS_LEFT, 20, body_top, 260, 22, self.hwnd, None, self.h_instance, None)
-            user32.CreateWindowExW(0, "STATIC", f"Backend local: http://{LOCAL_AGENT_HOST}:{LOCAL_AGENT_PORT}", WS_CHILD|WS_VISIBLE|SS_LEFT, 20, body_top+30, 300, 22, self.hwnd, None, self.h_instance, None)
-            user32.CreateWindowExW(0, "STATIC", "Cierra esta ventana para detener el agente.", WS_CHILD|WS_VISIBLE|SS_LEFT, 20, body_top+60, 300, 22, self.hwnd, None, self.h_instance, None)
-            user32.CreateWindowExW(0, "BUTTON", "Abrir web", WS_TABSTOP|WS_VISIBLE|WS_CHILD|BS_PUSHBUTTON, 20, body_top+98, 110, 30, self.hwnd, ctypes.c_void_p(BUTTON_OPEN_ID), self.h_instance, None)
-            user32.CreateWindowExW(0, "BUTTON", "Ver Logs", WS_TABSTOP|WS_VISIBLE|WS_CHILD|BS_PUSHBUTTON, 140, body_top+98, 110, 30, self.hwnd, ctypes.c_void_p(BUTTON_DEBUG_ID), self.h_instance, None)
+            user32.CreateWindowExW(0, "STATIC", f"Agente local: http://{LOCAL_AGENT_HOST}:{LOCAL_AGENT_PORT}", WS_CHILD|WS_VISIBLE|SS_LEFT, 20, body_top+30, 300, 22, self.hwnd, None, self.h_instance, None)
+            user32.CreateWindowExW(0, "STATIC", f"Web remota: {WEB_APP_URL}", WS_CHILD|WS_VISIBLE|SS_LEFT, 20, body_top+60, 300, 22, self.hwnd, None, self.h_instance, None)
+            user32.CreateWindowExW(0, "STATIC", "Cierra esta ventana para detener el agente.", WS_CHILD|WS_VISIBLE|SS_LEFT, 20, body_top+90, 300, 22, self.hwnd, None, self.h_instance, None)
+            user32.CreateWindowExW(0, "BUTTON", "Abrir web", WS_TABSTOP|WS_VISIBLE|WS_CHILD|BS_PUSHBUTTON, 20, body_top+122, 110, 30, self.hwnd, ctypes.c_void_p(BUTTON_OPEN_ID), self.h_instance, None)
+            user32.CreateWindowExW(0, "BUTTON", "Ver Logs", WS_TABSTOP|WS_VISIBLE|WS_CHILD|BS_PUSHBUTTON, 140, body_top+122, 110, 30, self.hwnd, ctypes.c_void_p(BUTTON_DEBUG_ID), self.h_instance, None)
 
         def _window_proc(self, hwnd, msg, wparam, lparam):
             if msg == WM_COMMAND:

@@ -1,0 +1,15 @@
+{
+  "name": "torktool",
+  "version": "1.0.0",
+  "description": "TorkTool - Utility Hub",
+  "main": "assets/js/app.js",
+  "scripts": {
+    "build": "node build/build.js"
+  },
+  "author": "RoftCore",
+  "license": "MIT",
+  "dependencies": {
+    "@imgly/background-removal": "^1.7.0",
+    "onnxruntime-web": "^1.25.1"
+  }
+}
