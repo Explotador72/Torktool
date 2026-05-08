@@ -53,11 +53,15 @@ def index():
     return "TorkTool Agent Ready"
 
 @app.route("/api/status")
+@limiter.exempt
 def status():
     from core.bridge import get_bridge_service
+    bridge_status = get_bridge_service().get_status()
     return jsonify({
-        "status": "online", "mode": "remote-bridge",
-        "bridge_connected": get_bridge_service().get_status().get("connected", False)
+        "status": "online",
+        "mode": "remote-bridge",
+        "bridge_connected": bridge_status.get("connected", False),
+        "bridge_last_error": bridge_status.get("last_error"),
     })
 
 @app.route("/api/playlist/info", methods=["POST"])

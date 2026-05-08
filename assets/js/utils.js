@@ -7,7 +7,6 @@ export const tc = (oneKey, otherKey, count, params = {}) => t(count === 1 ? oneK
 
 const DEFAULT_LOCAL_AGENT_URL = 'http://localhost:7777';
 const LOCAL_AGENT_PORT = 7777;
-const REMOTE_AGENT_URL = 'https://torktool.roftcore.work';
 const LOCAL_AGENT_CANDIDATES = [
   `http://127.0.0.1:${LOCAL_AGENT_PORT}`,
   DEFAULT_LOCAL_AGENT_URL,
@@ -42,7 +41,7 @@ function getDefaultApiUrl() {
     return `${window.location.protocol}//${window.location.hostname}:${LOCAL_AGENT_PORT}`;
   }
 
-  return REMOTE_AGENT_URL;
+  return null;
 }
 
 function getStoredApiUrl() {
@@ -99,7 +98,7 @@ export function getApiUrl() {
   if (resolvedApiUrl) return resolvedApiUrl;
   const storedUrl = getStoredApiUrl();
   if (storedUrl) return storedUrl;
-  return getDefaultApiUrl() || DEFAULT_LOCAL_AGENT_URL;
+  return getDefaultApiUrl();
 }
 
 export async function resolveApiUrl(forceRefresh = false) {
@@ -129,7 +128,7 @@ export async function resolveApiUrl(forceRefresh = false) {
       }
     }
 
-    resolvedApiUrl = REMOTE_AGENT_URL;
+    resolvedApiUrl = null;
     if (storedUrl && isStoredPrivateUrl(storedUrl)) {
       window.localStorage.removeItem('torktool.localAgentUrl');
     }
@@ -146,6 +145,9 @@ export async function resolveApiUrl(forceRefresh = false) {
 export async function apiFetch(endpoint, options = {}) {
     try {
         const baseUrl = await resolveApiUrl();
+        if (!baseUrl) {
+            throw new Error('Local agent not available');
+        }
         const url = endpoint.startsWith('http') ? endpoint : `${baseUrl}${endpoint}`;
         
         const headers = {
