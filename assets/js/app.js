@@ -1,7 +1,7 @@
 /**
  * Main Application Entry Point (ES Module)
  */
-import { apiFetch, getApiUrl } from './utils.js';
+import { apiFetch, getApiUrl, resolveApiUrl } from './utils.js';
 import { initMediaModule, refreshMediaFiles } from './media.js';
 import { initPdfModule } from './pdf.js';
 import { initTranscriberModule } from './transcriber.js';
@@ -83,7 +83,20 @@ function initAgentStatusSystem() {
 
   async function checkStatus(isManual = false) {
     try {
+      const shouldRefreshApiTarget = isManual || pollInterval !== 5000;
+      let apiUrl = getApiUrl();
+      if (shouldRefreshApiTarget || !apiUrl) {
+        apiUrl = await resolveApiUrl(true);
+      }
+
+      if (!apiUrl) {
+        throw new Error('Local agent not detected');
+      }
+
       const response = await apiFetch('/api/status');
+      if (!response.ok) {
+        throw new Error(`Status request failed: ${response.status}`);
+      }
       const data = await response.json();
 
       const isOnline = data.status === 'online';
