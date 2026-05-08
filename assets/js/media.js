@@ -1,5 +1,5 @@
 
-import { t, tc, apiFetch, getApiUrl, showGlobalProgress, hideGlobalProgress } from './utils.js';
+import { t, tc, apiFetch, resolveApiUrl, showGlobalProgress, hideGlobalProgress } from './utils.js';
 
 const mediaUrlInput = document.getElementById('mediaUrl');
 const processMediaBtn = document.getElementById('processMediaBtn');
@@ -68,8 +68,9 @@ async function openDownloadsFolder(filename = '') {
   }
 }
 
-function watchDownloadJob(jobId, handlers = {}) {
-  const source = new EventSource(`${getApiUrl()}/api/download/events/${jobId}`);
+async function watchDownloadJob(jobId, handlers = {}) {
+  const baseUrl = await resolveApiUrl();
+  const source = new EventSource(`${baseUrl}/api/download/events/${jobId}`);
 
   source.onmessage = (event) => {
     try {
@@ -183,7 +184,7 @@ async function startSpotifyDownload(url) {
     const jobId = data.job_id;
     if (!jobId) throw new Error(t('common.error'));
 
-    watchDownloadJob(jobId, {
+    await watchDownloadJob(jobId, {
       onUpdate: (status) => {
         if (status.status === 'downloading' || status.status === 'finished') {
           const label = status.status === 'finished' ? t('media.ready_to_download') : t('media.spotify_unpacking');
@@ -228,7 +229,7 @@ async function startYouTubeDownload(urls) {
     const jobId = data.job_id;
     if (!jobId) throw new Error(t('common.error'));
 
-    watchDownloadJob(jobId, {
+    await watchDownloadJob(jobId, {
       onUpdate: (status) => {
         if (status.status === 'downloading' || status.status === 'finished') {
           showGlobalProgress(`${t('media.youtube_processing')} (${status.percent ?? 0}%)`, status.percent ?? 0);
