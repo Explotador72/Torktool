@@ -8,6 +8,13 @@ export const tc = (oneKey, otherKey, count, params = {}) => t(count === 1 ? oneK
 const DEFAULT_LOCAL_AGENT_URL = 'http://localhost:7777';
 const LOCAL_AGENT_PORT = 7777;
 const REMOTE_AGENT_URL = 'https://torktool.roftcore.work';
+const LOCAL_AGENT_CANDIDATES = [
+  `http://127.0.0.1:${LOCAL_AGENT_PORT}`,
+  DEFAULT_LOCAL_AGENT_URL,
+];
+
+let resolvedApiUrl = null;
+let resolveApiUrlPromise = null;
 
 function isPrivateHost(hostname) {
   if (!hostname) return false;
@@ -38,36 +45,107 @@ function getDefaultApiUrl() {
   return REMOTE_AGENT_URL;
 }
 
-export function getApiUrl() {
+function getStoredApiUrl() {
   const storedUrl = window.localStorage.getItem('torktool.localAgentUrl');
-  if (storedUrl) {
-    try {
-      const parsed = new URL(storedUrl);
-      const currentHostIsPrivate = isPrivateHost(window.location?.hostname);
-      const storedHostIsPrivate = isPrivateHost(parsed.hostname);
+  if (!storedUrl) return null;
 
-      if (!currentHostIsPrivate && storedHostIsPrivate) {
-        window.localStorage.removeItem('torktool.localAgentUrl');
-        return REMOTE_AGENT_URL;
-      }
+  try {
+    const parsed = new URL(storedUrl);
+    const currentHostIsPrivate = isPrivateHost(window.location?.hostname);
+    const storedHostIsPrivate = isPrivateHost(parsed.hostname);
 
-      if (isPrivateHost(window.location?.hostname) && isPrivateHost(parsed.hostname)) {
-        if (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1' || parsed.hostname === '::1') {
-          return `${window.location.protocol}//${window.location.hostname}:${LOCAL_AGENT_PORT}`;
-        }
-      }
-      return storedUrl;
-    } catch {
+    if (!currentHostIsPrivate && storedHostIsPrivate) {
       return storedUrl;
     }
-  }
 
+    if (currentHostIsPrivate && storedHostIsPrivate) {
+      if (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1' || parsed.hostname === '::1') {
+        return `${window.location.protocol}//${window.location.hostname}:${LOCAL_AGENT_PORT}`;
+      }
+    }
+
+    return storedUrl;
+  } catch {
+    return storedUrl;
+  }
+}
+
+function isStoredPrivateUrl(url) {
+  try {
+    return isPrivateHost(new URL(url).hostname);
+  } catch {
+    return false;
+  }
+}
+
+async function probeApiUrl(baseUrl) {
+  try {
+    const response = await fetch(`${baseUrl}/api/status`, {
+      method: 'GET',
+      headers: { 'X-Client-Type': 'TorkTool-Web' },
+      cache: 'no-store',
+    });
+
+    if (!response.ok) return false;
+
+    const data = await response.json().catch(() => null);
+    return data?.status === 'online';
+  } catch {
+    return false;
+  }
+}
+
+export function getApiUrl() {
+  if (resolvedApiUrl) return resolvedApiUrl;
+  const storedUrl = getStoredApiUrl();
+  if (storedUrl) return storedUrl;
   return getDefaultApiUrl() || DEFAULT_LOCAL_AGENT_URL;
+}
+
+export async function resolveApiUrl(forceRefresh = false) {
+  if (!forceRefresh && resolvedApiUrl) return resolvedApiUrl;
+  if (!forceRefresh && resolveApiUrlPromise) return resolveApiUrlPromise;
+
+  resolveApiUrlPromise = (async () => {
+    const currentHostIsPrivate = isPrivateHost(window.location?.hostname);
+    const storedUrl = getStoredApiUrl();
+
+    if (currentHostIsPrivate) {
+      resolvedApiUrl = getDefaultApiUrl() || DEFAULT_LOCAL_AGENT_URL;
+      window.localStorage.setItem('torktool.localAgentUrl', resolvedApiUrl);
+      return resolvedApiUrl;
+    }
+
+    const candidates = [...new Set([
+      storedUrl,
+      ...LOCAL_AGENT_CANDIDATES,
+    ].filter(Boolean))];
+
+    for (const candidate of candidates) {
+      if (await probeApiUrl(candidate)) {
+        resolvedApiUrl = candidate;
+        window.localStorage.setItem('torktool.localAgentUrl', candidate);
+        return resolvedApiUrl;
+      }
+    }
+
+    resolvedApiUrl = REMOTE_AGENT_URL;
+    if (storedUrl && isStoredPrivateUrl(storedUrl)) {
+      window.localStorage.removeItem('torktool.localAgentUrl');
+    }
+    return resolvedApiUrl;
+  })();
+
+  try {
+    return await resolveApiUrlPromise;
+  } finally {
+    resolveApiUrlPromise = null;
+  }
 }
 
 export async function apiFetch(endpoint, options = {}) {
     try {
-        const baseUrl = getApiUrl();
+        const baseUrl = await resolveApiUrl();
         const url = endpoint.startsWith('http') ? endpoint : `${baseUrl}${endpoint}`;
         
         const headers = {
