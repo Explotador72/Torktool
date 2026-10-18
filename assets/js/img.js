@@ -1155,7 +1155,16 @@ async function convertToPdf() {
     const embeds = new Map();
 
     for (const entry of entries) {
-      const size = pageSizeFor(entry, mode, entries);
+      let size = pageSizeFor(entry, mode, entries);
+      let rect = entryRect(entry, size, mode);
+      // Uniform mode: the page IS the file, so the page follows the box the user left. A
+      // shrunk or moved box would otherwise leave a sheet around the content in the export
+      // — the very background the preview no longer draws in this mode. A4 keeps the whole
+      // sheet: there the sheet is the output and the placement is part of the design.
+      if (mode !== 'a4') {
+        size = { w: rect.w, h: rect.h };
+        rect = { x: 0, y: 0, w: rect.w, h: rect.h };
+      }
       let embed = embeds.get(entry.key);
       if (!embed) {
         if (entry.kind === 'pdf') {
@@ -1168,7 +1177,7 @@ async function convertToPdf() {
       }
 
       const target = out.addPage([size.w, size.h]);
-      drawSource(target, { ...entry, embed }, entryRect(entry, size, mode), size);
+      drawSource(target, { ...entry, embed }, rect, size);
     }
 
     if (!out.getPageCount()) { alert(tr('pdf.error_empty')); return; }
