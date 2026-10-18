@@ -302,6 +302,29 @@
 
                         <div class="img-pdf-section">
                             <div class="img-pdf-grid" id="imgPdfGrid"></div>
+
+                            <div class="img-pdf-preview">
+                                <div class="img-pdf-preview-head">
+                                    <div class="img-pdf-preview-title">
+                                        <i class="fas fa-file-lines"></i>
+                                        <span>{{pdf-preview_title}}</span>
+                                    </div>
+                                    <div class="img-pdf-preview-tools">
+                                        <span class="img-pdf-preview-meta" id="imgPdfPreviewMeta"></span>
+                                        <label class="img-pdf-width-field" title="{{pdf-page_width_hint}}">
+                                            <span>{{pdf-page_width_label}}</span>
+                                            <input id="imgPdfPageWidth" type="number" min="30" max="1200" step="1" inputmode="decimal" placeholder="{{pdf-page_width_auto}}">
+                                            <span class="img-pdf-width-unit">mm</span>
+                                        </label>
+                                        <button id="imgPdfResetLayoutsBtn" type="button" class="img-pdf-mini-btn" title="{{pdf-reset_all_layouts}}">
+                                            <i class="fas fa-arrows-rotate"></i>
+                                            <span>{{pdf-reset_all_layouts}}</span>
+                                        </button>
+                                    </div>
+                                </div>
+                                <p class="img-pdf-preview-hint">{{pdf-preview_hint}}</p>
+                                <div class="img-pdf-pages" id="imgPdfPages"></div>
+                            </div>
                             
                             <div class="img-pdf-controls">
                                 <div class="option-group">
