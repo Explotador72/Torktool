@@ -3,7 +3,7 @@
     "title": "TorkTool - Utility Hub",
     "brand_prefix": "Tork",
     "brand_suffix": "Tool",
-    "version": "v2.0.1 · Pro Edition"
+    "version": "v2.1.0 · Pro Edition"
   },
   "status": {
     "online": "Local Agent Online",
@@ -52,14 +52,14 @@
   },
   "pdf": {
     "title": "Image to PDF",
-    "description": "Turn your photos (JPG, PNG, HEIC) into a professional PDF document in seconds.",
+    "description": "Turn your photos and PDFs into one document. Add JPG, PNG, HEIC or PDF files, drag to reorder them and merge everything into a single PDF.",
     "filename_label": "File name",
     "filename_placeholder": "E.g. Scanned_Document",
     "fit_label": "Page fit",
     "size_a4": "A4 size",
     "uniform": "Uniform",
-    "upload_title": "Click or drag your images",
-    "upload_desc": "Supports JPG, PNG, WEBP and HEIC (iPhone)",
+    "upload_title": "Click or drag your images or PDFs",
+    "upload_desc": "Supports JPG, PNG, WEBP, HEIC, BMP, AVIF and PDF",
     "images_selected_zero": "0 images selected",
     "images_selected_one": "{{count}} image selected",
     "images_selected_other": "{{count}} images selected",
@@ -67,7 +67,15 @@
     "generating": "Generating PDF...",
     "rotate": "Rotate",
     "delete": "Delete",
-    "no_images": "No images have been selected yet."
+    "no_images": "No files have been added yet. Drag images or PDFs here.",
+    "add_hint": "Drag a thumbnail to change the order. The PDF will follow that order.",
+    "doc_pages_one": "{{count}} page",
+    "doc_pages_other": "{{count}} pages",
+    "error_read": "This file could not be read: {{name}}. Make sure it is a valid PDF.",
+    "error_encrypted": "This PDF is password-protected: {{name}}. Remove the password and try again.",
+    "error_lib": "The PDF engine could not be loaded. Check your connection and reload the page.",
+    "error_empty": "There is nothing to export.",
+    "error_generic": "The PDF could not be generated: {{error}}"
   },
   "img": {
     "title": "Image Editor",

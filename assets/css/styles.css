@@ -2366,6 +2366,45 @@ body {
   background: var(--error);
 }
 
+/* Imported PDF documents shown in the PDF list */
+.img-pdf-thumb.pdf-doc-thumb {
+  background: var(--bg-panel-2);
+  border-style: dashed;
+}
+
+.pdf-doc-thumb .pdf-doc-body {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  height: 100%;
+  padding: 6px 24px 6px 8px;
+  text-align: center;
+}
+
+.pdf-doc-thumb .pdf-doc-body i {
+  font-size: 20px;
+  color: var(--error);
+}
+
+.pdf-doc-thumb .pdf-doc-name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.pdf-doc-thumb .pdf-doc-pages {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
 .img-pdf-controls {
   display: flex;
   flex-direction: column;

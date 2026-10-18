@@ -2,7 +2,18 @@
  * Shared Utilities for TorkTool
  */
 
-export const t = (key, params) => window.i18n?.t(key, params) ?? key;
+// Resolves {{name}} placeholders. The i18n object injected by the production
+// bundle (build/build.js) only does a flat dictionary lookup and ignores the
+// params argument, so interpolation is done here for every module.
+const interpolate = (value, params) => {
+  const text = String(value ?? '');
+  if (!params) return text;
+  return text.replace(/\{\{(\w+)\}\}/g, (match, name) =>
+    params[name] === undefined || params[name] === null ? match : String(params[name])
+  );
+};
+
+export const t = (key, params) => interpolate(window.i18n?.t(key, params) ?? key, params);
 export const tc = (oneKey, otherKey, count, params = {}) => t(count === 1 ? oneKey : otherKey, { ...params, count });
 
 const DEFAULT_LOCAL_AGENT_URL = 'http://localhost:7777';

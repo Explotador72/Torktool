@@ -3,7 +3,7 @@
     "title": "TorkTool - Centro de utilidades",
     "brand_prefix": "Tork",
     "brand_suffix": "Tool",
-    "version": "v2.0.1 · Pro Edition"
+    "version": "v2.1.0 · Pro Edition"
   },
   "status": {
     "online": "Agente Local Activo",
@@ -52,14 +52,14 @@
   },
   "pdf": {
     "title": "Imagen a PDF",
-    "description": "Convierte tus fotos (JPG, PNG, HEIC) en un documento PDF profesional en segundos.",
+    "description": "Convierte tus fotos y PDFs en un solo documento. Añade JPG, PNG, HEIC o PDF, arrástralos para ordenarlos y únelo todo en un único PDF.",
     "filename_label": "Nombre del archivo",
     "filename_placeholder": "Ej: Documento_Escaneado",
     "fit_label": "Ajuste de página",
     "size_a4": "Tamaño A4",
     "uniform": "Uniforme",
-    "upload_title": "Haz clic o arrastra tus imágenes",
-    "upload_desc": "Soporta JPG, PNG, WEBP y HEIC (iPhone)",
+    "upload_title": "Haz clic o arrastra tus imágenes o PDFs",
+    "upload_desc": "Soporta JPG, PNG, WEBP, HEIC, BMP, AVIF y PDF",
     "images_selected_zero": "0 imágenes seleccionadas",
     "images_selected_one": "{{count}} imagen seleccionada",
     "images_selected_other": "{{count}} imágenes seleccionadas",
@@ -67,7 +67,15 @@
     "generating": "Generando PDF...",
     "rotate": "Rotar",
     "delete": "Eliminar",
-    "no_images": "No has seleccionado imágenes todavía."
+    "no_images": "Todavía no has añadido archivos. Arrastra imágenes o PDFs aquí.",
+    "add_hint": "Arrastra una miniatura para cambiar el orden. El PDF seguirá ese orden.",
+    "doc_pages_one": "{{count}} página",
+    "doc_pages_other": "{{count}} páginas",
+    "error_read": "No se pudo leer este archivo: {{name}}. Comprueba que sea un PDF válido.",
+    "error_encrypted": "Este PDF está protegido con contraseña: {{name}}. Quítala e inténtalo de nuevo.",
+    "error_lib": "No se pudo cargar el motor de PDF. Revisa tu conexión y recarga la página.",
+    "error_empty": "No hay nada que exportar.",
+    "error_generic": "No se pudo generar el PDF: {{error}}"
   },
   "img": {
     "title": "Editor de Imágenes",

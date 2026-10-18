@@ -1,12 +1,19 @@
 // ============ IMAGE PROCESSING MODULE (Optimized) ============
 
+import { t as tr, tc } from './utils.js';
+
 // State
-let allImages = [], activeImageId = null, pdfImageOrder = [];
+let allImages = [], activeImageId = null, pdfOrder = [], pdfDocs = [];
 
 // Constants
 const SUPPORTED_FORMATS = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif', 'image/heic', 'image/bmp', 'image/avif'];
+// A4 in PostScript points (1 pt = 1/72 in) + the 10 mm margin used by the image path.
+const MM_TO_PT = 72 / 25.4;
+const A4_WIDTH_PT = 595.28, A4_HEIGHT_PT = 841.89, A4_MARGIN_PT = 10 * MM_TO_PT;
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
+const isPdfFile = (file) => file.type === 'application/pdf' || /\.pdf$/i.test(file.name || '');
+const getPdfLib = () => window.PDFLib || null;
 const BACKGROUND_REMOVAL_BASE_CONFIG = Object.freeze({
   rescale: true,
   output: { format: 'image/png', quality: 1 }
@@ -22,6 +29,8 @@ let compressionTaskSeq = 0;
 const generateId = () => 'img_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
 const nextFrame = () => new Promise(r => requestAnimationFrame(r));
 const getActive = () => allImages.find(i => i.id === activeImageId);
+// An item of the PDF list can be an image (from allImages) or an imported PDF document.
+const pdfItemById = (id) => allImages.find(i => i.id === id) || pdfDocs.find(i => i.id === id);
 const getDisplaySrc = (img) => img.compressionPreview || img.processed || img.url;
 const supportsWebGpu = () => typeof navigator !== 'undefined' && !!navigator.gpu;
 function getBackgroundRemovalConfig() {
@@ -230,10 +239,18 @@ function loadImageData(file) {
 }
 
 async function handleFiles(files, target = 'editor') {
-  const valid = [...files].filter(f => SUPPORTED_FORMATS.includes(f.type));
-  if (!valid.length) return;
+  // Sequential on purpose: pdfOrder must follow the order the files were dropped in.
+  let addedPdf = false, handled = 0;
 
-  for (const file of valid) {
+  for (const file of [...files]) {
+    if (isPdfFile(file)) {
+      handled++;
+      addedPdf = (await addPdfFiles([file])) || addedPdf;
+      continue;
+    }
+    if (!SUPPORTED_FORMATS.includes(file.type)) continue;
+    handled++;
+
     const name = file.name.toLowerCase().replace(/\.heic$/i, '.png');
     if (allImages.some(i => i.name.toLowerCase() === name)) continue;
 
@@ -249,11 +266,47 @@ async function handleFiles(files, target = 'editor') {
     if (!data) continue;
     
     allImages.push(data);
-    if (!pdfImageOrder.includes(data.id)) pdfImageOrder.push(data.id);
+    if (!pdfOrder.includes(data.id)) pdfOrder.push(data.id);
   }
+
+  if (!handled) return;
 
   updateAllViews();
   if (target === 'editor' && !activeImageId && allImages.length) selectImage(allImages[0].id);
+  // PDFs only exist in the PDF view: jump there so the user sees what was added.
+  if (addedPdf) window.switchImgView?.('pdf');
+}
+
+// ============ PDF DOCUMENTS ============
+async function addPdfFiles(files) {
+  if (!files.length) return false;
+  const PDFLib = getPdfLib();
+  if (!PDFLib?.PDFDocument) {
+    alert(tr('pdf.error_lib'));
+    return false;
+  }
+
+  let added = false;
+  for (const file of files) {
+    if (pdfDocs.some(d => d.name.toLowerCase() === file.name.toLowerCase())) continue;
+    try {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const doc = await PDFLib.PDFDocument.load(bytes, { updateMetadata: false });
+      const item = {
+        id: generateId(), isPdf: true, file, doc,
+        name: file.name, pageCount: doc.getPageCount(),
+        width: 0, height: 0, rotation: 0
+      };
+      pdfDocs.push(item);
+      pdfOrder.push(item.id);
+      added = true;
+    } catch (e) {
+      console.error('PDF load failed:', file.name, e);
+      const key = /encrypt/i.test(String(e?.message)) ? 'pdf.error_encrypted' : 'pdf.error_read';
+      alert(tr(key, { name: file.name }));
+    }
+  }
+  return added;
 }
 
 // ============ UI UPDATES ============
@@ -288,8 +341,8 @@ function createThumb(img, cls = '') {
     <div class="thumb-info">${img.width}x${img.height}</div>
   `;
   div.append(
-    createBtn('thumb-remove', 'fa-times', e => { e.stopPropagation(); deleteImg(img.id); }),
-    createBtn('thumb-rotate', '↻', e => { e.stopPropagation(); rotateImg(img.id); }, 'Rotar')
+    createBtn('thumb-remove', 'fa-times', e => { e.stopPropagation(); deleteImg(img.id); }, tr('pdf.delete')),
+    createBtn('thumb-rotate', '↻', e => { e.stopPropagation(); rotateImg(img.id); }, tr('pdf.rotate'))
   );
   div.onclick = () => selectImage(img.id);
   return div;
@@ -305,27 +358,48 @@ function renderGallery() {
 function renderPdfGrid() {
   const grid = $('#imgPdfGrid');
   if (!grid) return;
-  grid.innerHTML = pdfImageOrder.length ? '' : '<div class="img-pdf-empty">No images loaded</div>';
-  
-  pdfImageOrder.forEach(id => {
-    const img = allImages.find(i => i.id === id);
-    if (!img) return;
-    const thumb = createThumb(img, 'img-pdf-thumb');
-    thumb.draggable = true;
-    thumb.ondragstart = e => { thumb.classList.add('dragging'); e.dataTransfer.setData('text/plain', id); };
-    thumb.ondragend = () => thumb.classList.remove('dragging');
-    thumb.ondragover = e => e.preventDefault();
-    thumb.ondrop = e => {
-      e.preventDefault();
-      const from = e.dataTransfer.getData('text/plain');
-      const i1 = pdfImageOrder.indexOf(from), i2 = pdfImageOrder.indexOf(id);
-      if (i1 > -1 && i2 > -1) {
-        pdfImageOrder.splice(i2, 0, pdfImageOrder.splice(i1, 1)[0]);
-        renderPdfGrid();
-      }
-    };
-    grid.appendChild(thumb);
+  grid.innerHTML = pdfOrder.length ? '' : `<div class="img-pdf-empty">${tr('pdf.no_images')}</div>`;
+
+  pdfOrder.forEach(id => {
+    const item = pdfItemById(id);
+    if (!item) return;
+    grid.appendChild(item.isPdf ? createPdfDocThumb(item) : makePdfThumb(createThumb(item, 'img-pdf-thumb'), id));
   });
+}
+
+// Drag & drop reordering shared by image and PDF thumbnails.
+function makePdfThumb(thumb, id) {
+  thumb.draggable = true;
+  thumb.ondragstart = e => { thumb.classList.add('dragging'); e.dataTransfer.setData('text/plain', id); };
+  thumb.ondragend = () => thumb.classList.remove('dragging');
+  thumb.ondragover = e => e.preventDefault();
+  thumb.ondrop = e => {
+    e.preventDefault();
+    const from = e.dataTransfer.getData('text/plain');
+    const i1 = pdfOrder.indexOf(from), i2 = pdfOrder.indexOf(id);
+    if (i1 > -1 && i2 > -1 && i1 !== i2) {
+      pdfOrder.splice(i2, 0, pdfOrder.splice(i1, 1)[0]);
+      renderPdfGrid();
+    }
+  };
+  return thumb;
+}
+
+function createPdfDocThumb(item) {
+  const div = document.createElement('div');
+  div.className = 'gallery-thumb img-pdf-thumb pdf-doc-thumb';
+  div.dataset.id = item.id;
+  div.title = item.name;
+  div.innerHTML = `
+    <div class="pdf-doc-body">
+      <i class="fas fa-file-pdf"></i>
+      <span class="pdf-doc-name"></span>
+      <span class="pdf-doc-pages"></span>
+    </div>`;
+  div.querySelector('.pdf-doc-name').textContent = item.name;
+  div.querySelector('.pdf-doc-pages').textContent = tc('pdf.doc_pages_one', 'pdf.doc_pages_other', item.pageCount);
+  div.append(createBtn('thumb-remove', 'fa-times', e => { e.stopPropagation(); deletePdfItem(item.id); }, tr('pdf.delete')));
+  return makePdfThumb(div, item.id);
 }
 
 // ============ IMAGE OPERATIONS ============
@@ -360,9 +434,18 @@ function deleteImg(id) {
   img.processed && URL.revokeObjectURL(img.processed);
   img.compressionPreview && URL.revokeObjectURL(img.compressionPreview);
   allImages.splice(idx, 1);
-  pdfImageOrder = pdfImageOrder.filter(i => i !== id);
+  pdfOrder = pdfOrder.filter(i => i !== id);
   if (activeImageId === id) activeImageId = allImages[0]?.id || null;
   updateAllViews();
+}
+
+function deletePdfItem(id) {
+  const before = pdfDocs.length;
+  pdfDocs = pdfDocs.filter(d => d.id !== id);
+  if (pdfDocs.length === before) return;
+  pdfOrder = pdfOrder.filter(i => i !== id);
+  renderPdfGrid();
+  updatePdfBtn();
 }
 
 async function rotateImg(id) {
@@ -601,48 +684,144 @@ async function backgroundRemoval() {
 }
 
 // ============ PDF ============
-function removeFromPdf(id) { pdfImageOrder = pdfImageOrder.filter(i => i !== id); renderPdfGrid(); updatePdfBtn(); }
-function clearAllPdf() { pdfImageOrder = []; renderPdfGrid(); updatePdfBtn(); }
-function updatePdfBtn() { if ($('#imgConvertPdfBtn')) $('#imgConvertPdfBtn').disabled = !pdfImageOrder.length; }
+function removeFromPdf(id) { pdfOrder = pdfOrder.filter(i => i !== id); renderPdfGrid(); updatePdfBtn(); }
+function clearAllPdf() { pdfOrder = []; pdfDocs = []; renderPdfGrid(); updatePdfBtn(); }
+function updatePdfBtn() { if ($('#imgConvertPdfBtn')) $('#imgConvertPdfBtn').disabled = !pdfOrder.length; }
 
-async function convertToPdf() {
-  if (!pdfImageOrder.length || !window.jspdf?.jsPDF) return alert('PDF library not loaded');
-  
+const sanitizeFileName = (name) => {
+  const clean = String(name || '').replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_').trim();
+  return clean || 'documento';
+};
+
+// Contain-fit placement for a page that may carry its own /Rotate.
+// pdf-lib does not bake the source /Rotate when embedding a page, so the
+// rotation is re-applied here and the anchor compensates for it.
+function fitRotatedPage(page, targetW, targetH, margin) {
+  const { width: w, height: h } = page.getSize();
+  const angle = ((page.getRotation().angle % 360) + 360) % 360;
+  const swapped = angle % 180 !== 0;
+  const visualW = swapped ? h : w;
+  const visualH = swapped ? w : h;
+  const innerW = targetW - margin * 2, innerH = targetH - margin * 2;
+  const scale = Math.min(innerW / visualW, innerH / visualH);
+  const boxW = w * scale, boxH = h * scale;
+  const originX = margin + (innerW - visualW * scale) / 2;
+  const originY = margin + (innerH - visualH * scale) / 2;
+  const anchors = {
+    90: [originX + boxH, originY],
+    180: [originX + boxW, originY + boxH],
+    270: [originX, originY + boxW]
+  };
+  const [x, y] = anchors[angle] || [originX, originY];
+  return { x, y, width: boxW, height: boxH, rotate: window.PDFLib.degrees(angle) };
+}
+
+// Images -> one jsPDF page each (same layout rules as before).
+// Returns the jsPDF document plus the page index of every image.
+async function buildImagePages(items, isA4) {
   const { jsPDF } = window.jspdf;
-  const format = $('input[name="imgPdfFormat"]:checked')?.value || 'uniform';
-  const isA4 = format === 'a4';
   let doc = null;
-  
-  for (let i = 0; i < pdfImageOrder.length; i++) {
-    const img = allImages.find(im => im.id === pdfImageOrder[i]);
-    if (!img) continue;
-    
-    await new Promise(resolve => {
+  const pageIndex = new Map();
+
+  for (const item of items) {
+    const loaded = await new Promise(resolve => {
       const image = new Image();
       image.onload = () => {
-        const rot = img.rotation || 0;
+        const rot = item.rotation || 0;
         const w = rot % 180 ? image.height : image.width;
         const h = rot % 180 ? image.width : image.height;
-        
+
         if (isA4) {
           if (!doc) doc = new jsPDF('p', 'mm', 'a4');
           else doc.addPage();
-          const pw = 190, ph = 277;
-          const r = Math.min(pw / w, ph / h);
-          doc.addImage(getDisplaySrc(img), 'PNG', 10, 10, w * r, h * r, null, 'FAST', rot);
+          const r = Math.min(190 / w, 277 / h);
+          doc.addImage(getDisplaySrc(item), 'PNG', 10, 10, w * r, h * r, null, 'FAST', rot);
         } else {
           const tw = 210, th = (h / w) * tw;
-          if (!doc) doc = new jsPDF({ orientation: tw > th ? 'l' : 'p', unit: 'mm', format: [tw, th] });
-          else doc.addPage([tw, th]);
-          doc.addImage(getDisplaySrc(img), 'PNG', 0, 0, tw, th, null, 'FAST', rot);
+          // jsPDF flips a page whose aspect does not match the document orientation,
+          // so the orientation must be passed explicitly for every page: a mixed
+          // portrait/landscape batch would otherwise swap the later pages.
+          const orientation = tw > th ? 'l' : 'p';
+          if (!doc) doc = new jsPDF({ orientation, unit: 'mm', format: [tw, th] });
+          else doc.addPage([tw, th], orientation);
+          doc.addImage(getDisplaySrc(item), 'PNG', 0, 0, tw, th, null, 'FAST', rot);
         }
-        resolve();
+        resolve(true);
       };
-      image.src = getDisplaySrc(img);
+      image.onerror = () => resolve(false);
+      image.src = getDisplaySrc(item);
     });
+
+    if (loaded) pageIndex.set(item.id, doc.getNumberOfPages() - 1);
   }
-  
-  doc?.save(`${$('#imgPdfFilename')?.value || 'documento'}.pdf`);
+
+  return { doc, pageIndex };
+}
+
+async function convertToPdf() {
+  if (!pdfOrder.length) return;
+  const { jsPDF } = window.jspdf || {};
+  const PDFLib = getPdfLib();
+  if (!jsPDF || !PDFLib?.PDFDocument) return alert(tr('pdf.error_lib'));
+
+  const btn = $('#imgConvertPdfBtn');
+  const previousLabel = btn ? btn.innerHTML : '';
+  const isA4 = ($('input[name="imgPdfFormat"]:checked')?.value || 'uniform') === 'a4';
+
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i><span>${tr('pdf.generating')}</span>`;
+  }
+
+  try {
+    // 1) Images become pages of an intermediate jsPDF document.
+    const imageItems = pdfOrder.map(pdfItemById).filter(item => item && !item.isPdf);
+    const { doc: jsPdfDoc, pageIndex } = await buildImagePages(imageItems, isA4);
+    const imageSource = jsPdfDoc ? await PDFLib.PDFDocument.load(jsPdfDoc.output('arraybuffer')) : null;
+
+    // 2) Assemble with pdf-lib following the drag & drop order.
+    const out = await PDFLib.PDFDocument.create();
+    for (const id of pdfOrder) {
+      const item = pdfItemById(id);
+      if (!item) continue;
+
+      if (item.isPdf) {
+        const src = item.doc;
+        if (isA4) {
+          // Re-layout every page on an A4 sheet with a 10 mm margin.
+          for (const page of src.getPages()) {
+            const target = out.addPage([A4_WIDTH_PT, A4_HEIGHT_PT]);
+            target.drawPage(await out.embedPage(page), fitRotatedPage(page, A4_WIDTH_PT, A4_HEIGHT_PT, A4_MARGIN_PT));
+          }
+        } else {
+          // Exact copy: keeps text, vectors and the original page size.
+          const copied = await out.copyPages(src, src.getPageIndices());
+          copied.forEach(page => out.addPage(page));
+        }
+      } else if (imageSource && pageIndex.has(id)) {
+        const [page] = await out.copyPages(imageSource, [pageIndex.get(id)]);
+        out.addPage(page);
+      }
+    }
+
+    if (!out.getPageCount()) { alert(tr('pdf.error_empty')); return; }
+
+    const bytes = await out.save();
+    const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+    const link = Object.assign(document.createElement('a'), {
+      href: url,
+      download: `${sanitizeFileName($('#imgPdfFilename')?.value)}.pdf`
+    });
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+  } catch (e) {
+    console.error('PDF generation failed:', e);
+    alert(tr('pdf.error_generic', { error: e?.message || e }));
+  } finally {
+    if (btn) { btn.disabled = !pdfOrder.length; btn.innerHTML = previousLabel; }
+  }
 }
 
 // ============ DOWNLOAD ============
@@ -660,7 +839,7 @@ function downloadAllImages() { allImages.forEach((img, i) => setTimeout(() => do
 
 function clearAllImages() {
   allImages.forEach(img => { img.url && URL.revokeObjectURL(img.url); img.processed && URL.revokeObjectURL(img.processed); });
-  allImages = []; activeImageId = null; pdfImageOrder = [];
+  allImages = []; activeImageId = null; pdfOrder = []; pdfDocs = [];
   updateAllViews(); updateOptionsPanel();
 }
 
@@ -681,8 +860,8 @@ function setupDropZone() {
     if (!e.dataTransfer.files.length || e.dataTransfer.types.includes('text/html')) return;
     if (e.target.closest('.img-preview-container,.img-gallery,.img-pdf-grid,.gallery-thumb,.img-pdf-thumb,img,canvas')) return;
     e.preventDefault();
-    const hasImages = [...e.dataTransfer.files].some(f => f.type.startsWith('image/'));
-    if (hasImages && $('.nav-btn.active')?.dataset.tab === 'imgpdf') {
+    const hasSupported = [...e.dataTransfer.files].some(f => f.type.startsWith('image/') || isPdfFile(f));
+    if (hasSupported && $('.nav-btn.active')?.dataset.tab === 'imgpdf') {
       handleFiles(e.dataTransfer.files, $('.img-toolbar-btn.active')?.dataset.imgView === 'pdf' ? 'pdf' : 'editor');
     }
   });

@@ -280,22 +280,22 @@
                 <div id="imgPdfView" class="img-view" style="display: none;">
                     <div class="content-header">
                         <h2>{{img-tab_pdf}}</h2>
-                        <p>{{img-pdf_description}}</p>
+                        <p>{{pdf-description}}</p>
                     </div>
 
                     <div class="img-pdf-container">
                         <div class="img-pdf-upload-zone" id="imgPdfDropZone">
-                            <div class="upload-zone" tabindex="0" role="button" aria-label="Subir imágenes para PDF">
+                            <div class="upload-zone" tabindex="0" role="button" aria-label="Subir imágenes o PDFs">
                                 <div class="upload-content">
                                     <div class="upload-icon-stack">
                                         <i class="fas fa-cloud-arrow-up main-icon"></i>
-                                        <i class="fas fa-images sub-icon"></i>
+                                        <i class="fas fa-file-pdf sub-icon"></i>
                                     </div>
                                     <div class="upload-text">
-                                        <h3>{{img-upload_title}}</h3>
-                                        <p>{{img-upload_desc}}</p>
+                                        <h3>{{pdf-upload_title}}</h3>
+                                        <p>{{pdf-upload_desc}}</p>
                                     </div>
-                                    <input id="imgPdfFileInput" type="file" accept="image/png,image/jpeg,image/jpg,image/webp,image/gif,image/heic,image/bmp,image/avif" multiple hidden>
+                                    <input id="imgPdfFileInput" type="file" accept="image/png,image/jpeg,image/jpg,image/webp,image/gif,image/heic,image/bmp,image/avif,application/pdf,.pdf" multiple hidden>
                                 </div>
                             </div>
                         </div>
@@ -448,6 +448,8 @@
     <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.0/dist/ort.min.js" defer></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js" defer></script>
+    <!-- pdf-lib 1.17.1: merge/copia de páginas de PDFs existentes (SRI = sha384 del fichero publicado) -->
+    <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js" integrity="sha384-weMABwrltA6jWR8DDe9Jp5blk+tZQh7ugpCsF3JwSA53WZM9/14PjS5LAJNHNjAI" crossorigin="anonymous" defer></script>
     
     <!-- Script principal -->
     <script type="module" src="assets/js/init.js"></script>

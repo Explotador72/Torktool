@@ -4,6 +4,8 @@ const path = require('path');
 const root = path.resolve(__dirname, '..');
 const output = path.join(root, 'dist');
 const languages = ['es', 'en'];
+// The default language is published at the site root; the rest at /<lang>/.
+const ROOT_LANGUAGE = 'en';
 
 function copyRecursive(source, destination) {
   const stat = fs.statSync(source);
@@ -89,14 +91,40 @@ function build() {
     fs.writeFileSync(path.join(output, 'sitemap.xml'), sitemap, 'utf8');
   }
 
+  // Stub for a previously public URL (e.g. /es/es.html) that now lives at /es/.
+  function redirectPage(language) {
+    return `<!DOCTYPE html>
+<html lang="${language}">
+<head>
+  <meta charset="UTF-8" />
+  <title>TorkTool</title>
+  <meta name="robots" content="noindex" />
+  <link rel="canonical" href="https://torktool.roftcore.work/${language}/" />
+  <meta http-equiv="refresh" content="0; url=/${language}/" />
+</head>
+<body>
+  <p><a href="/${language}/">TorkTool</a></p>
+</body>
+</html>
+`;
+  }
+
   function renderHtml(source, dictionary, language) {
     const flat = flattenDictionary(dictionary);
+    // Languages other than the root one are published one level below (e.g. /es/index.html),
+    // so their relative asset URLs need a prefix. Without it /es/assets/... 404s and the
+    // translated page loads without CSS or JS.
+    const assetPrefix = language === ROOT_LANGUAGE ? '' : '../';
     let html = source
       .replace(/<html lang="[^"]*">/, `<html lang="${language}">`)
+      .replace(/\b(href|src)="(?!\/\/|https?:|data:|mailto:|#)([^"]+)"/g, (_, attr, url) => `${attr}="${assetPrefix}${url}"`)
       .replace(/\{\{([\w.-]+)\}\}/g, (_, key) => {
         const normalizedKey = flat[key] !== undefined ? key : normalizeTemplateKey(key);
         return flat[normalizedKey] !== undefined ? String(flat[normalizedKey]) : `{{${key}}}`;
-      });
+      })
+      // i18n-loader.js is deliberately not part of the bundle (window.i18n is injected
+      // below), so the reference would only produce a 404 on load.
+      .replace(/\s*<script type="module" src="[^"]*i18n-loader\.js"><\/script>/, '');
 
     // Add hreflang and og:image
     const hreflangLinks = generateHreflangLinks(language);
@@ -121,12 +149,17 @@ function build() {
     const dictionary = JSON.parse(fs.readFileSync(translationPath, 'utf8'));
     const html = renderHtml(template, dictionary, language);
 
-    if (language === 'en') {
+    if (language === ROOT_LANGUAGE) {
       fs.writeFileSync(path.join(output, 'index.html'), html, 'utf8');
-    } else {
-      fs.mkdirSync(path.join(output, language), { recursive: true });
-      fs.writeFileSync(path.join(output, language, `${language}.html`), html, 'utf8');
+      return;
     }
+
+    // Published as /<lang>/index.html so hreflang, the sitemap and the plain /<lang>/ URL resolve.
+    const languageDir = path.join(output, language);
+    fs.mkdirSync(languageDir, { recursive: true });
+    fs.writeFileSync(path.join(languageDir, 'index.html'), html, 'utf8');
+    // Keeps the previously published /<lang>/<lang>.html URL alive.
+    fs.writeFileSync(path.join(languageDir, `${language}.html`), redirectPage(language), 'utf8');
   });
 
   // Generate sitemap
