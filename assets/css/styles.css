@@ -2604,6 +2604,25 @@ body {
   z-index: 2;
 }
 
+/* Uniform mode: every page is exactly its own content, so neither paper nor desk is
+   drawn — only the file itself. A4 keeps the white sheet on the grey desk, because
+   there the sheet is what gets exported. The frame, handles and labels stay: they are
+   the editing aids, not decoration. */
+.img-pdf-pages.is-uniform {
+  background: none;
+  border-color: transparent;
+}
+
+.img-pdf-pages.is-uniform .pdf-page {
+  background: transparent;
+  box-shadow: none;
+  border-radius: 0;
+}
+
+.img-pdf-pages.is-uniform .pdf-page-item {
+  background: transparent;
+}
+
 /* Placeholder for PDF source pages: the real content is vector and is kept
    intact on export, only its frame is editable here. */
 .pdf-page-placeholder {

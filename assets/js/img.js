@@ -856,6 +856,9 @@ function renderPdfPreview() {
   const mode = pdfMode();
   const entries = docEntries();
   updatePageWidthField(mode);
+  // In uniform mode each page hugs its own content, so the preview shows only the file:
+  // no white sheet and no grey desk (see .img-pdf-pages.is-uniform).
+  host.classList.toggle('is-uniform', mode !== 'a4');
 
   const meta = $('#imgPdfPreviewMeta');
   if (!entries.length) {
