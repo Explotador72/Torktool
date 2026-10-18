@@ -3,7 +3,7 @@
     "title": "TorkTool - Centro de utilidades",
     "brand_prefix": "Tork",
     "brand_suffix": "Tool",
-    "version": "v2.2.2 · Pro Edition"
+    "version": "v2.3.0 · Pro Edition"
   },
   "status": {
     "online": "Agente Local Activo",
@@ -55,7 +55,9 @@
     "description": "Convierte tus fotos y PDFs en un solo documento. Añade JPG, PNG, HEIC o PDF, arrástralos para ordenarlos y únelo todo en un único PDF.",
     "filename_label": "Nombre del archivo",
     "filename_placeholder": "Ej: Documento_Escaneado",
+    "rename_hint": "Doble clic para renombrar",
     "fit_label": "Ajuste de página",
+    "fit_switch": "Cambiar el ajuste de página (A4 / Uniforme)",
     "size_a4": "Tamaño A4",
     "uniform": "Uniforme",
     "upload_title": "Haz clic o arrastra tus imágenes o PDFs",
@@ -64,6 +66,7 @@
     "images_selected_one": "{{count}} imagen seleccionada",
     "images_selected_other": "{{count}} imágenes seleccionadas",
     "generate": "Generar Documento PDF",
+    "download": "Descargar",
     "generating": "Generando PDF...",
     "rotate": "Rotar",
     "delete": "Eliminar",
@@ -82,6 +85,7 @@
     "pdf_page_label": "Página {{n}} del PDF",
     "image_label": "Imagen",
     "remove_from_doc": "Quitar del documento",
+    "remove_page": "Quitar esta página",
     "meta_a4": "A4 · 210 × 297 mm",
     "meta_uniform": "Ancho uniforme · {{w}} mm",
     "doc_pages_one": "{{count}} página",

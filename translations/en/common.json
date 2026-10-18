@@ -3,7 +3,7 @@
     "title": "TorkTool - Utility Hub",
     "brand_prefix": "Tork",
     "brand_suffix": "Tool",
-    "version": "v2.2.2 · Pro Edition"
+    "version": "v2.3.0 · Pro Edition"
   },
   "status": {
     "online": "Local Agent Online",
@@ -55,7 +55,9 @@
     "description": "Turn your photos and PDFs into one document. Add JPG, PNG, HEIC or PDF files, drag to reorder them and merge everything into a single PDF.",
     "filename_label": "File name",
     "filename_placeholder": "E.g. Scanned_Document",
+    "rename_hint": "Double click to rename",
     "fit_label": "Page fit",
+    "fit_switch": "Change the page fit (A4 / Uniform)",
     "size_a4": "A4 size",
     "uniform": "Uniform",
     "upload_title": "Click or drag your images or PDFs",
@@ -64,6 +66,7 @@
     "images_selected_one": "{{count}} image selected",
     "images_selected_other": "{{count}} images selected",
     "generate": "Generate PDF Document",
+    "download": "Download",
     "generating": "Generating PDF...",
     "rotate": "Rotate",
     "delete": "Delete",
@@ -82,6 +85,7 @@
     "pdf_page_label": "PDF page {{n}}",
     "image_label": "Image",
     "remove_from_doc": "Remove from the document",
+    "remove_page": "Remove this page",
     "meta_a4": "A4 · 210 × 297 mm",
     "meta_uniform": "Uniform width · {{w}} mm",
     "doc_pages_one": "{{count}} page",

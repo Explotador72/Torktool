@@ -307,10 +307,15 @@
                                 <div class="img-pdf-preview-head">
                                     <div class="img-pdf-preview-title">
                                         <i class="fas fa-file-lines"></i>
-                                        <span>{{pdf-preview_title}}</span>
+                                        <input id="imgPdfFilename" class="img-pdf-doc-name" type="text" value="documento" placeholder="{{pdf-filename_placeholder}}" title="{{pdf-rename_hint}}" aria-label="{{pdf-filename_label}}" readonly>
+                                        <span class="img-pdf-doc-ext">.pdf</span>
                                     </div>
                                     <div class="img-pdf-preview-tools">
                                         <span class="img-pdf-preview-meta" id="imgPdfPreviewMeta"></span>
+                                        <button id="imgPdfFitToggle" type="button" class="img-pdf-mini-btn" title="{{pdf-fit_switch}}" aria-label="{{pdf-fit_label}}">
+                                            <i class="fas fa-right-left"></i>
+                                            <span id="imgPdfFitLabel">{{pdf-uniform}}</span>
+                                        </button>
                                         <label class="img-pdf-width-field" title="{{pdf-page_width_hint}}">
                                             <span>{{pdf-page_width_label}}</span>
                                             <input id="imgPdfPageWidth" type="number" min="30" max="1200" step="1" inputmode="decimal" placeholder="{{pdf-page_width_auto}}">
@@ -320,6 +325,12 @@
                                             <i class="fas fa-arrows-rotate"></i>
                                             <span>{{pdf-reset_all_layouts}}</span>
                                         </button>
+                                        <button id="imgConvertPdfBtn" class="btn-primary img-pdf-download" disabled>
+                                            <i class="fas fa-download"></i>
+                                            <span>{{pdf-download}}</span>
+                                        </button>
+                                        <input type="radio" name="imgPdfFormat" value="a4" hidden>
+                                        <input type="radio" name="imgPdfFormat" value="uniform" checked hidden>
                                     </div>
                                 </div>
                                 <p class="img-pdf-preview-hint">{{pdf-preview_hint}}</p>
@@ -327,39 +338,6 @@
                             </div>
                             
                             <div class="img-pdf-controls">
-                                <div class="option-group">
-                                    <label><i class="fas fa-signature"></i> {{pdf-filename_label}}</label>
-                                    <div class="input-with-icon">
-                                        <input id="imgPdfFilename" type="text" placeholder="{{pdf-filename_placeholder}}" value="documento" aria-label="Nombre del archivo PDF">
-                                        <span class="extension-tag">.pdf</span>
-                                    </div>
-                                </div>
-
-                                <div class="option-group">
-                                    <label><i class="fas fa-expand"></i> {{pdf-fit_label}}</label>
-                                    <div class="toggle-selector pdf-toggle">
-                                        <label class="toggle-option">
-                                            <input type="radio" name="imgPdfFormat" value="a4">
-                                            <div class="option-content">
-                                                <i class="fas fa-file-lines"></i>
-                                                <span>{{pdf-size_a4}}</span>
-                                            </div>
-                                        </label>
-                                        <label class="toggle-option">
-                                            <input type="radio" name="imgPdfFormat" value="uniform" checked>
-                                            <div class="option-content">
-                                                <i class="fas fa-border-all"></i>
-                                                <span>{{pdf-uniform}}</span>
-                                            </div>
-                                        </label>
-                                    </div>
-                                </div>
-
-                                <button id="imgConvertPdfBtn" class="btn-primary btn-full" disabled>
-                                    <i class="fas fa-file-export"></i>
-                                    <span>{{pdf-generate}}</span>
-                                </button>
-                                
                                 <button id="imgPdfClearAllBtn" class="btn-outline btn-danger btn-full">
                                     <i class="fas fa-trash"></i>
                                     <span>{{img-clear_all}}</span>

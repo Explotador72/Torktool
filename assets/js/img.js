@@ -9,6 +9,7 @@ let allImages = [], activeImageId = null, pdfOrder = [], pdfDocs = [];
 // imported PDF) placed on a rectangle the user can move and resize in the preview.
 // Rects are stored in PDF points with a TOP-LEFT origin, and converted on export.
 let layoutEdits = new Map();      // `${itemId}:${srcIndex}` -> { x, y, w, h }
+let hiddenPages = new Set();      // `${itemId}:${srcIndex}` of the pages taken out of the document
 let selectedLayoutKey = null;
 let previewScale = 1;             // preview pixels per point
 let previewResizeTimer = null;
@@ -64,12 +65,15 @@ const getExt = (img) => {
 };
 
 // Button factory
-const createBtn = (cls, icon, onclick, title = '') => 
-  Object.assign(document.createElement('button'), {
+const createBtn = (cls, icon, onclick, title = '', action = '') => {
+  const btn = Object.assign(document.createElement('button'), {
     className: cls, title, type: 'button',
     innerHTML: icon.startsWith('fa-') ? `<i class="fas ${icon}"></i>` : icon,
     onclick
   });
+  if (action) btn.dataset.action = action;
+  return btn;
+};
 
 // Unified image processing (resize + format + quality)
 const processImage = (src, { w, h, format, quality = 1, rotation = 0 } = {}) => new Promise(resolve => {
@@ -400,6 +404,13 @@ function makePdfThumb(thumb, id) {
   return thumb;
 }
 
+// Pages of a PDF file that still take part in the document (single pages can be removed).
+function activePageCount(item) {
+  let hidden = 0;
+  hiddenPages.forEach(key => { if (key.startsWith(`${item.id}:`)) hidden++; });
+  return Math.max(0, (item.pageCount || 0) - hidden);
+}
+
 function createPdfDocThumb(item) {
   const div = document.createElement('div');
   div.className = 'gallery-thumb img-pdf-thumb pdf-doc-thumb';
@@ -412,7 +423,7 @@ function createPdfDocThumb(item) {
       <span class="pdf-doc-pages"></span>
     </div>`;
   div.querySelector('.pdf-doc-name').textContent = item.name;
-  div.querySelector('.pdf-doc-pages').textContent = tc('pdf.doc_pages_one', 'pdf.doc_pages_other', item.pageCount);
+  div.querySelector('.pdf-doc-pages').textContent = tc('pdf.doc_pages_one', 'pdf.doc_pages_other', activePageCount(item));
   div.append(createBtn('thumb-remove', 'fa-times', e => { e.stopPropagation(); deletePdfItem(item.id); }, tr('pdf.delete')));
   return makePdfThumb(div, item.id);
 }
@@ -451,6 +462,7 @@ function deleteImg(id) {
   allImages.splice(idx, 1);
   pdfOrder = pdfOrder.filter(i => i !== id);
   clearLayoutFor(id);
+  clearHiddenFor(id);
   if (activeImageId === id) activeImageId = allImages[0]?.id || null;
   updateAllViews();
 }
@@ -461,6 +473,7 @@ function deletePdfItem(id) {
   if (pdfDocs.length === before) return;
   pdfOrder = pdfOrder.filter(i => i !== id);
   clearLayoutFor(id);
+  clearHiddenFor(id);
   renderPdfGrid();
   renderPdfPreview();
   updatePdfBtn();
@@ -704,12 +717,15 @@ async function backgroundRemoval() {
 }
 
 // ============ PDF ============
-function removeFromPdf(id) { pdfOrder = pdfOrder.filter(i => i !== id); clearLayoutFor(id); renderPdfGrid(); renderPdfPreview(); updatePdfBtn(); }
+function removeFromPdf(id) { pdfOrder = pdfOrder.filter(i => i !== id); clearLayoutFor(id); clearHiddenFor(id); renderPdfGrid(); renderPdfPreview(); updatePdfBtn(); }
 function clearAllPdf() {
-  pdfOrder = []; pdfDocs = []; layoutEdits.clear(); selectedLayoutKey = null;
+  pdfOrder = []; pdfDocs = []; layoutEdits.clear(); hiddenPages.clear(); selectedLayoutKey = null;
   renderPdfGrid(); renderPdfPreview(); updatePdfBtn();
 }
-function updatePdfBtn() { if ($('#imgConvertPdfBtn')) $('#imgConvertPdfBtn').disabled = !pdfOrder.length; }
+function updatePdfBtn() {
+  const btn = $('#imgConvertPdfBtn');
+  if (btn) btn.disabled = !pdfOrder.length;
+}
 
 const sanitizeFileName = (name) => {
   const clean = String(name || '').replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_').trim();
@@ -733,6 +749,8 @@ function docEntries() {
 
     if (item.isPdf) {
       item.doc.getPages().forEach((page, srcIndex) => {
+        // A page taken out of the preview takes no part in the output document.
+        if (hiddenPages.has(`${id}:${srcIndex}`)) return;
         const { width, height } = page.getSize();
         const angle = ((page.getRotation().angle % 360) + 360) % 360;
         entries.push({
@@ -801,6 +819,11 @@ const clearLayoutFor = (id) => {
   if (selectedLayoutKey?.startsWith(`${id}:`)) selectedLayoutKey = null;
 };
 
+// Pages taken out of the document belong to their file: they go when the file goes.
+const clearHiddenFor = (id) => {
+  [...hiddenPages].forEach(key => { if (key.startsWith(`${id}:`)) hiddenPages.delete(key); });
+};
+
 // Copies the source into the target rect. pdf-lib emits translate · rotate · scale, and
 // its positive angle runs opposite to the /Rotate convention, so the sign is flipped and
 // the anchor takes the right visual corner of the box. Verified against a PyMuPDF render
@@ -849,6 +872,40 @@ function updatePageWidthField(mode) {
   if (field) field.classList.toggle('disabled', mode === 'a4');
 }
 
+// The page fit is a single button in the preview header; it shows the mode in force.
+function syncFitToggle() {
+  const label = $('#imgPdfFitLabel');
+  if (label) label.textContent = pdfMode() === 'a4' ? tr('pdf.size_a4') : tr('pdf.uniform');
+}
+
+// The header carries the document name and turns into the input itself on a double click:
+// one element, so there is nothing to keep in sync and the export keeps reading it.
+function setupDocNameInput() {
+  const input = $('#imgPdfFilename');
+  if (!input) return;
+
+  const fitWidth = () => { input.size = Math.min(38, Math.max(7, (input.value || '').length + 1)); };
+  const stop = () => { input.readOnly = true; fitWidth(); };
+
+  input.readOnly = true;
+  fitWidth();
+  input.addEventListener('dblclick', () => {
+    input.dataset.before = input.value;
+    input.readOnly = false;
+    input.focus();
+    input.select();
+  });
+  input.addEventListener('input', fitWidth);
+  input.addEventListener('blur', () => {
+    if (!input.value.trim()) input.value = 'documento';
+    stop();
+  });
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+    else if (e.key === 'Escape') { e.preventDefault(); input.value = input.dataset.before || 'documento'; input.blur(); }
+  });
+}
+
 function renderPdfPreview() {
   const host = $('#imgPdfPages');
   if (!host) return;
@@ -856,6 +913,7 @@ function renderPdfPreview() {
   const mode = pdfMode();
   const entries = docEntries();
   updatePageWidthField(mode);
+  syncFitToggle();
   // In uniform mode each page hugs its own content, so the preview shows only the file:
   // no white sheet and no grey desk (see .img-pdf-pages.is-uniform).
   host.classList.toggle('is-uniform', mode !== 'a4');
@@ -930,11 +988,12 @@ function createPreviewItem(entry, rect, size) {
   const tools = document.createElement('div');
   tools.className = 'pdf-page-tools';
   tools.append(
-    createBtn('', 'fa-expand', e => { e.stopPropagation(); resetEntryLayout(entry.key); }, tr('pdf.reset_layout')),
-    createBtn('', 'fa-trash', e => { e.stopPropagation(); removeEntrySource(entry); }, tr('pdf.remove_from_doc'))
+    createBtn('', 'fa-expand', e => { e.stopPropagation(); resetEntryLayout(entry.key); }, tr('pdf.reset_layout'), 'reset'),
+    createBtn('', 'fa-trash', e => { e.stopPropagation(); removeEntrySource(entry); },
+      entry.kind === 'pdf' ? tr('pdf.remove_page') : tr('pdf.remove_from_doc'), 'remove')
   );
   if (entry.kind === 'image') {
-    tools.insertBefore(createBtn('', 'fa-rotate-right', e => { e.stopPropagation(); rotateImg(entry.id); }, tr('pdf.rotate')), tools.lastChild);
+    tools.insertBefore(createBtn('', 'fa-rotate-right', e => { e.stopPropagation(); rotateImg(entry.id); }, tr('pdf.rotate'), 'rotate'), tools.lastChild);
   }
   el.appendChild(tools);
 
@@ -958,14 +1017,24 @@ function resetEntryLayout(key) {
   renderPdfPreview();
 }
 
+// The bin removes *that page*: one page of an imported PDF leaves the rest of the file in
+// the document, while an image is a page of its own and goes with it.
 function removeEntrySource(entry) {
-  if (entry.kind === 'pdf') deletePdfItem(entry.id);
-  else deleteImg(entry.id);
+  if (entry.kind !== 'pdf') { deleteImg(entry.id); return; }
+  hiddenPages.add(entry.key);
+  layoutEdits.delete(entry.key);
+  if (selectedLayoutKey === entry.key) selectedLayoutKey = null;
+  renderPdfGrid();
+  renderPdfPreview();
+  updatePdfBtn();
 }
 
 function attachPreviewInteraction(el, entry, size) {
   el.addEventListener('pointerdown', e => {
     if (e.button !== 0) return;
+    // The frame captures the pointer in order to drag, and a capturing element swallows
+    // the click of its own buttons: leave the tool buttons their pointer.
+    if (e.target.closest?.('.pdf-page-tools')) return;
     e.preventDefault();
     e.stopPropagation();
     if (selectedLayoutKey !== entry.key) { selectedLayoutKey = entry.key; markSelectedItem(); }
@@ -1216,7 +1285,7 @@ function downloadAllImages() { allImages.forEach((img, i) => setTimeout(() => do
 function clearAllImages() {
   allImages.forEach(img => { img.url && URL.revokeObjectURL(img.url); img.processed && URL.revokeObjectURL(img.processed); });
   allImages = []; activeImageId = null; pdfOrder = []; pdfDocs = [];
-  layoutEdits.clear(); selectedLayoutKey = null;
+  layoutEdits.clear(); hiddenPages.clear(); selectedLayoutKey = null;
   updateAllViews(); updateOptionsPanel();
 }
 
@@ -1324,6 +1393,17 @@ function setupPreviewActions() {
 function setupPdfConvert() {
   $('#imgConvertPdfBtn')?.addEventListener('click', convertToPdf);
   $('#imgPdfClearAllBtn')?.addEventListener('click', clearAllPdf);
+
+  // The page fit is one button in the header: it flips the radio the rest of the code
+  // reads, so the usual handler (clear the placements, re-render) still runs.
+  $('#imgPdfFitToggle')?.addEventListener('click', () => {
+    const radio = $(`input[name="imgPdfFormat"][value="${pdfMode() === 'a4' ? 'uniform' : 'a4'}"]`);
+    if (!radio) return;
+    radio.checked = true;
+    radio.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+
+  setupDocNameInput();
 
   // A different page fit changes the geometry of every page: the placement is reset
   // so nothing ends up hanging outside the new page.
